@@ -1,26 +1,13 @@
 ---
 title: My gear
-description: Everything I use to build, create, and stay productive – hardware, software, and the stuff in between.
+description: Everything I use to build, create, and stay productive – hardwar, and the stuff in between.
 date: 2026-07-23
 tags:
   - tool
   - setup
 ---
 
-Everything I use to build, create, and stay productive. Hardware, software, and the stuff in between.
-
-## Software
-
-```
-$ cat ~/.config/stack
-os        NixOS
-editor    Neovim
-terminal  tmux
-shell     bash
-wm        sway (Wayland)
-theme     Arc-Dark
-browser   Firefox
-```
+Everything I use to build, create, and stay productive. Hardware, and the stuff in between.
 
 ## Machines
 

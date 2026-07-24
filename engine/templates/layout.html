@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    /* Inline critical paint colors so the page never flashes in dark mode
+       before the main stylesheet loads. */
+    :root { color-scheme: light dark; background: #f6f5f4; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #1f1f1e; }
+    }
+  </style>
+  <script>
+    /* Restore the graph-rail width before first paint to avoid a layout jump. */
+    (() => {
+      try {
+        const w = parseFloat(localStorage.getItem("jakub.railWidth") || "");
+        if (!Number.isFinite(w)) return;
+        const c = Math.max(220, Math.min(560, w));
+        document.documentElement.style.setProperty("--rail-width", `${c}px`);
+      } catch {}
+    })();
+  </script>
+  <title>{{document_title}}</title>
+  {{seo_meta}}
+  <link rel="icon" type="image/png" sizes="32x32" href="{{base}}favicons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{base}}favicons/favicon-16x16.png">
+  <link rel="alternate icon" href="{{base}}favicons/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="{{base}}favicons/apple-touch-icon.png">
+  <link rel="manifest" href="{{base}}favicons/site.webmanifest">
+  <meta name="theme-color" content="#f6f5f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1f1f1e" media="(prefers-color-scheme: dark)">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/github.min.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="{{css_path}}">
+  <link rel="stylesheet" href="{{base}}styles/newsletter.css">
+  <script src="{{base}}scripts/env.js" defer></script>
+  <script src="{{js_path}}" defer></script>
+  <script src="{{base}}scripts/newsletter.js" defer></script>
+  <script src="{{base}}scripts/graph.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+  <button class="nav-toggle" data-nav-toggle type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="sidebar">
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+    <span class="nav-toggle-bar"></span>
+  </button>
+  <div class="nav-scrim" data-nav-scrim aria-hidden="true"></div>
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <a href="{{base}}index.html" class="site-title">
+        <img class="site-mark" src="{{base}}favicons/logo.png" alt="" width="24" height="24">
+        <span>{{site_title}}</span>
+      </a>
+      <p class="site-tagline">{{site_description}}</p>
+      <nav class="nav-tree" aria-label="Sections">
+        {{nav}}
+      </nav>
+      <div class="sidebar-foot">
+        <span class="sidebar-foot-tag">A digital garden – tended, not published.</span>
+        <span class="sidebar-version" title="build commit">{{version}}</span>
+      </div>
+    </aside>
+    <main id="content">
+      <article>
+        <h1>{{title}}</h1>
+        {{content}}
+      </article>
+    </main>
+    {{rail}}
+  </div>
+  <script type="speculationrules">
+    {
+      "prerender": [
+        {
+          "where": { "and": [{ "href_matches": "/*" }, { "not": { "selector_matches": "[rel~=external]" } }] },
+          "eagerness": "moderate"
+        }
+      ]
+    }
+  </script>
+</body>
+</html>

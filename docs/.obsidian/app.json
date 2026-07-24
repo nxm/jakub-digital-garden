@@ -1,0 +1,8 @@
+{
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "attachmentFolderPath": "media",
+  "alwaysUpdateLinks": true,
+  "promptDelete": false,
+  "showLineNumber": true
+}

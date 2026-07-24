@@ -1,0 +1,46 @@
+# --- Build output --------------------------------------------------
+dist/
+node_modules/
+
+# --- Nix / direnv --------------------------------------------------
+.direnv/
+result
+result-*
+
+# --- Lockfiles ----------------------------------------------------
+# Keep bun.lock committed for reproducible CI installs.
+# (No lines here — intentionally not ignored.)
+
+# --- OS cruft -----------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# --- Editors / IDEs ----------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Env / secrets -----------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# --- Obsidian per-user state (commit the rest of .obsidian/) -----
+# Root-level Obsidian state (repo opened as a vault by mistake — vault is docs/).
+/.obsidian/
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/workspace.json.bak
+docs/.obsidian/cache
+docs/.obsidian/.obsidian-trash/
+docs/.obsidian/plugins/**/data.json
+
+# --- Logs --------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

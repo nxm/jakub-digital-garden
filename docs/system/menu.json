@@ -1,0 +1,14 @@
+{
+  "title": "jakub.app",
+  "description": "My digital garden – notes, ideas, and experiments.",
+  "image": "",
+  "twitter": "",
+  "base": "/",
+  "home": "Home",
+  "items": [
+    { "label": "Me", "path": "/Me" },
+    { "label": "Concepts", "path": "/Concepts" },
+    { "label": "Projects", "path": "/Projects" },
+    { "label": "Tools", "path": "/Tools" }
+  ]
+}

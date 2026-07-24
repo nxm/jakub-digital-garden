@@ -1,0 +1,115 @@
+/* Newsletter signup form rendered from <NewsletterForm />. */
+.newsletter-form {
+  max-width: 30rem;
+  margin: 1.85rem 0;
+}
+
+.newsletter-form__form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.newsletter-form__row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.newsletter-form__input {
+  flex: 1;
+  min-width: 0;
+  height: 2.45rem;
+  border-radius: 4px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--fg-strong);
+  font: inherit;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.newsletter-form__input::placeholder {
+  color: var(--fg-muted);
+}
+
+.newsletter-form__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.newsletter-form__input:disabled {
+  opacity: 0.65;
+}
+
+.newsletter-form__input.is-invalid {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.newsletter-form__button {
+  height: 2.45rem;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  padding: 0 1.15rem;
+  background: var(--accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+}
+
+.newsletter-form__button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.newsletter-form__button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.newsletter-form__button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.newsletter-form__hint,
+.newsletter-form__notice {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.newsletter-form__hint--error {
+  color: var(--accent);
+}
+
+.newsletter-form__notice {
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  padding: 0.15rem 0 0.15rem 0.65rem;
+  color: var(--fg-muted);
+}
+
+.newsletter-form[data-status="success"] .newsletter-form__notice,
+.newsletter-form[data-status="exists"] .newsletter-form__notice,
+.newsletter-form[data-status="error"] .newsletter-form__notice {
+  color: var(--fg);
+}
+
+.newsletter-form [hidden] {
+  display: none !important;
+}
+
+@media (max-width: 520px) {
+  .newsletter-form__row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .newsletter-form__button {
+    width: 100%;
+  }
+}

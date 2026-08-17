@@ -4,7 +4,7 @@ import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod";
 import { assertDate, assertTime, localTime, logDay } from "./day.js";
-import { appendEntry, readDayNote, totalKcal } from "./vault.js";
+import { appendEntry, readDayNote, recordTraining, totalKcal } from "./vault.js";
 
 const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
@@ -114,6 +114,63 @@ function buildServer(): McpServer {
       await appendEntry(day, "Thoughts", [`### ${stamp}`, "", text].join("\n"));
 
       return { content: [{ type: "text" as const, text: `Saved to ${day} at ${stamp}.` }] };
+    },
+  );
+
+  server.registerTool(
+    "log_training",
+    {
+      description:
+        "Record the day's training, or that there was none. Pass minutes: 0 for a rest day. " +
+        "Do not judge whether a rest was planned or a session was skipped — the weekly plan in " +
+        "Me/Training.md already says what the day was for, and comparing it against what happened " +
+        "is more honest than a label chosen after the fact. Give a reason only if there is a real " +
+        "one, like illness or travel; otherwise leave it out.",
+      inputSchema: z.object({
+        minutes: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Total minutes trained across the day. 0 for a rest day."),
+        summary: z
+          .string()
+          .optional()
+          .describe('One line on what was done, e.g. "62 min strength, mostly zones 1–2".'),
+        session: z
+          .string()
+          .optional()
+          .describe('Basename of a session note to link, e.g. "session-2026-08-11".'),
+        reason: z
+          .string()
+          .optional()
+          .describe("Why there was no training, when there is an actual reason. Not for excuses."),
+        date: dateField,
+      }),
+    },
+    async ({ minutes, summary, session, reason, date }) => {
+      const day = date ? assertDate(date) : logDay();
+
+      const lines = [
+        ...(minutes > 0 ? [`**${minutes} min**`] : ["Rest day."]),
+        ...(summary ? ["", summary] : []),
+        ...(session ? ["", `Session: [[${session}]]`] : []),
+        ...(reason ? ["", reason] : []),
+      ];
+
+      const updated = await recordTraining(day, minutes, lines.join("\n"));
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              minutes > 0
+                ? `Logged ${minutes} min of training to ${day}.`
+                : `Recorded ${day} as a rest day.` +
+                  ` Day total still ~${totalKcal(updated)} kcal.`,
+          },
+        ],
+      };
     },
   );
 

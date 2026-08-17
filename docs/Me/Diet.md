@@ -65,7 +65,11 @@ Most meals follow this shape:
 
 ## The log
 
-Each day gets its own dated note under `Me/Diet/` as `session-YYYY-MM-DD.md`. Keep them short – what I ate, whether protein and fresh food were covered, and how hunger/energy felt. Newest first below.
+What I eat is logged as a section of the day's note rather than a note of its own. Nothing ever links to "the diet of 17 August" as a unit, so a file per day per pillar would be three notes where one will do – and the date already identifies the day.
+
+Training is the exception: a session has substance worth comparing across weeks, so it keeps its own note under `Me/Training/`. That asymmetry is deliberate.
+
+The daily log itself stays out of the published garden.
 
 ## Tracking
 

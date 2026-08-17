@@ -29,8 +29,34 @@ it belongs to. Tools take an optional `date` only for backfilling.
 | tool | purpose |
 | --- | --- |
 | `log_meal` | Record a meal or drink. Pass items with portions and calories; the server sums them. Set `contains_fish` — Jakub is allergic. |
+| `log_training` | Record the day's training, or that there was none. Replaces rather than appends. |
 | `log_thought` | Append a thought in the user's own words. |
 | `get_day` | Read a day back, including the running calorie total. |
+
+## One day, three parts
+
+A day note is the hub: diet and thoughts inline, training as a link. Meals
+accumulate, so `log_meal` appends. A day has one training state, so
+`log_training` replaces — calling it twice corrects rather than duplicates.
+
+Training keeps its own note under `Me/Training/` because a session has substance
+worth comparing across weeks, and because those are published. Meals do not:
+nothing ever links to one breakfast, and there would be some 1800 of them a year.
+
+Links run from the private day note out to public notes, never the other way.
+The site never walks `private/`, so a public note pointing back at a day would
+render as a dead link.
+
+## No verdict on rest days
+
+`log_training` takes minutes and, optionally, a real reason — illness, travel.
+It does not record whether a rest was planned or a session was skipped. The
+weekly plan in `Me/Training.md` already says what each day was for, and comparing
+it against what happened is more honest than a label chosen in hindsight, which
+would always be chosen generously.
+
+`training_minutes` is absent until something is logged, and `0` means a recorded
+rest day. Those are different facts and the frontmatter keeps them apart.
 
 ## Where it writes
 

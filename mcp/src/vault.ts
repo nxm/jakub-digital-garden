@@ -2,13 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { assertDate } from "./day.js";
 
-export const SECTIONS = ["Meals", "Drinks", "Thoughts"] as const;
+// Diet, training, everything else — the three parts of a day, in that order.
+export const SECTIONS = ["Meals", "Drinks", "Training", "Thoughts"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 // Each intake entry carries its calories in an HTML comment: invisible in
 // Obsidian's reading view, but trivial to re-sum when refreshing the total.
 const KCAL_MARKER = /<!-- kcal=(\d+) -->/g;
-const KCAL_FRONTMATTER = /^kcal: \d+$/m;
 
 const vaultRoot = resolve(process.env["VAULT_PATH"] ?? join(import.meta.dirname, "..", "..", "docs"));
 
@@ -79,6 +79,34 @@ function insertIntoSection(note: string, section: Section, entry: string): strin
   return lines.join("\n");
 }
 
+/** Replaces a whole section's body. */
+function replaceSection(note: string, section: Section, body: string): string {
+  const lines = note.split("\n");
+  const headingIndex = ensureSection(lines, section);
+
+  let sectionEnd = lines.length;
+  for (let index = headingIndex + 1; index < lines.length; index++) {
+    if (lines[index]?.startsWith("## ")) {
+      sectionEnd = index;
+      break;
+    }
+  }
+
+  lines.splice(headingIndex + 1, sectionEnd - headingIndex - 1, "", ...body.split("\n"), "");
+  return lines.join("\n");
+}
+
+/** Sets a top-level frontmatter key, adding it when the note lacks one. */
+function setFrontmatter(note: string, key: string, value: string): string {
+  const existing = new RegExp(`^${key}: .*$`, "m");
+  if (existing.test(note)) return note.replace(existing, `${key}: ${value}`);
+
+  // Append just inside the closing fence, so the tags list above stays intact.
+  const closing = note.indexOf("\n---\n", 4);
+  if (closing === -1) throw new Error("day note is missing its frontmatter fence");
+  return `${note.slice(0, closing)}\n${key}: ${value}${note.slice(closing)}`;
+}
+
 export function totalKcal(note: string): number {
   let total = 0;
   for (const match of note.matchAll(KCAL_MARKER)) total += Number(match[1]);
@@ -86,7 +114,7 @@ export function totalKcal(note: string): number {
 }
 
 function refreshKcalTotal(note: string): string {
-  return note.replace(KCAL_FRONTMATTER, `kcal: ${totalKcal(note)}`);
+  return setFrontmatter(note, "kcal", String(totalKcal(note)));
 }
 
 // Appends are serialised per file: two tool calls landing in the same second
@@ -102,15 +130,33 @@ function withFileLock<T>(key: string, task: () => Promise<T>): Promise<T> {
   return pending;
 }
 
-export async function appendEntry(date: string, section: Section, entry: string): Promise<string> {
+async function updateNote(date: string, change: (note: string) => string): Promise<string> {
   const path = dayNotePath(date);
 
   return withFileLock(path, async () => {
-    const existing = (await readDayNote(date)) ?? emptyNote(date);
-    const updated = refreshKcalTotal(insertIntoSection(existing, section, entry));
+    const updated = refreshKcalTotal(change((await readDayNote(date)) ?? emptyNote(date)));
 
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${updated.replace(/\n+$/, "")}\n`, "utf8");
     return updated;
   });
+}
+
+export function appendEntry(date: string, section: Section, entry: string): Promise<string> {
+  return updateNote(date, (note) => insertIntoSection(note, section, entry));
+}
+
+/** Records the day's training state, replacing whatever was there before.
+ *
+ * A day has one training state, unlike meals which accumulate, so this replaces
+ * rather than appends and stays safe to call twice.
+ *
+ * `minutes` is written to the frontmatter only when training is logged. An empty
+ * note deliberately has no training_minutes at all: nothing recorded and a rest
+ * day are different facts, and a default of 0 would erase the distinction.
+ */
+export function recordTraining(date: string, minutes: number, body: string): Promise<string> {
+  return updateNote(date, (note) =>
+    setFrontmatter(replaceSection(note, "Training", body), "training_minutes", String(minutes)),
+  );
 }

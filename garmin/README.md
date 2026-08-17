@@ -44,6 +44,15 @@ Days marked final are skipped unless `--force` is passed, so the nightly run
 converges without re-fetching settled history. Its window is wider than a
 couple of days precisely so that still-open ones stay in reach.
 
+## Where it writes
+
+`docs/Daily/YYYY-MM-DD.md` — the same published note the MCP server writes meals
+and training into. These metrics go on the site.
+
+What stays private is `docs/private/thoughts/`, which the MCP server keeps
+separately: that directory is gitignored and the site never walks it. Nothing
+here touches it.
+
 ## Fields written
 
 ```yaml

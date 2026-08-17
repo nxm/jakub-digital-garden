@@ -4,7 +4,7 @@ import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod";
 import { assertDate, assertTime, localTime, logDay } from "./day.js";
-import { appendEntry, readDayNote, recordTraining, totalKcal } from "./vault.js";
+import { appendEntry, appendThought, readDayNote, recordTraining, totalKcal } from "./vault.js";
 
 const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
@@ -100,7 +100,9 @@ function buildServer(): McpServer {
     "log_thought",
     {
       description:
-        "Append a thought, idea or observation to today's log. Keep the user's own words — do not summarise or tidy them.",
+        "Append a thought, idea or observation to the day's private notes. Keep the user's own " +
+        "words — do not summarise or tidy them. Unlike meals and training, thoughts are never " +
+        "published: they go to a note the site does not build and the repository does not track.",
       inputSchema: z.object({
         text: z.string().min(1),
         date: dateField,
@@ -111,9 +113,9 @@ function buildServer(): McpServer {
       const day = date ? assertDate(date) : logDay();
       const stamp = time ? assertTime(time) : localTime();
 
-      await appendEntry(day, "Thoughts", [`### ${stamp}`, "", text].join("\n"));
+      await appendThought(day, [`### ${stamp}`, "", text].join("\n"));
 
-      return { content: [{ type: "text" as const, text: `Saved to ${day} at ${stamp}.` }] };
+      return { content: [{ type: "text" as const, text: `Saved privately to ${day} at ${stamp}.` }] };
     },
   );
 

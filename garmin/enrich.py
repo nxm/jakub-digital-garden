@@ -310,18 +310,17 @@ def collect(
 
 
 def note_path(vault: Path, day: date) -> Path:
-    return vault / "private" / "log" / f"{day.isoformat()}.md"
+    return vault / "Daily" / f"{day.isoformat()}.md"
 
 
 def empty_note(day: date) -> str:
     """Frontmatter only — the MCP server creates section headings on first use."""
     return (
         "---\n"
-        f"title: {day.isoformat()} – Log\n"
+        f"title: {day.isoformat()}\n"
         f"date: {day.isoformat()}\n"
         "tags:\n"
-        "  - log\n"
-        "publish: false\n"
+        "  - daily\n"
         "kcal: 0\n"
         "---\n"
         "\n"

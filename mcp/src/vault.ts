@@ -2,8 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { assertDate } from "./day.js";
 
-// Diet, training, everything else — the three parts of a day, in that order.
-export const SECTIONS = ["Meals", "Drinks", "Training", "Thoughts"] as const;
+// What you ate and what you trained, in that order. Thoughts are deliberately
+// not here: they live in a separate note that never reaches the repository.
+export const SECTIONS = ["Meals", "Drinks", "Training"] as const;
 export type Section = (typeof SECTIONS)[number];
 
 // Each intake entry carries its calories in an HTML comment: invisible in
@@ -13,24 +14,47 @@ const KCAL_MARKER = /<!-- kcal=(\d+) -->/g;
 const vaultRoot = resolve(process.env["VAULT_PATH"] ?? join(import.meta.dirname, "..", "..", "docs"));
 
 export function dayNotePath(date: string): string {
-  return join(vaultRoot, "private", "log", `${assertDate(date)}.md`);
+  return join(vaultRoot, "Daily", `${assertDate(date)}.md`);
+}
+
+/** Thoughts get their own note under private/, which is gitignored.
+ *
+ * The day note is published, and log_thought exists to capture whatever was
+ * said out loud without tidying it — which is exactly the material that should
+ * not travel to a public repository ten minutes later, unreviewed. Splitting
+ * along the publishable boundary keeps one automation from deciding that.
+ */
+export function thoughtsNotePath(date: string): string {
+  return join(vaultRoot, "private", "thoughts", `${assertDate(date)}.md`);
 }
 
 // Sections are created on first use rather than stubbed out up front, so a day
-// with only meals does not carry an empty "## Thoughts". It also lets the Garmin
+// with only meals does not carry an empty "## Training". It also lets the Garmin
 // enricher create a note from frontmatter alone without duplicating this shape.
 function emptyNote(date: string): string {
   return [
     "---",
-    `title: ${date} – Log`,
+    `title: ${date}`,
     `date: ${date}`,
     "tags:",
-    "  - log",
-    "publish: false",
+    "  - daily",
     "kcal: 0",
     "---",
     "",
     "Related: [[Diet]], [[Training]]",
+    "",
+  ].join("\n");
+}
+
+function emptyThoughtsNote(date: string): string {
+  return [
+    "---",
+    `title: ${date} – Thoughts`,
+    `date: ${date}`,
+    "tags:",
+    "  - thoughts",
+    "publish: false",
+    "---",
     "",
   ].join("\n");
 }
@@ -159,4 +183,27 @@ export function recordTraining(date: string, minutes: number, body: string): Pro
   return updateNote(date, (note) =>
     setFrontmatter(replaceSection(note, "Training", body), "training_minutes", String(minutes)),
   );
+}
+
+export async function readThoughtsNote(date: string): Promise<string | undefined> {
+  try {
+    return await readFile(thoughtsNotePath(date), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+/** Appends to the day's private thoughts note, which the site never builds. */
+export function appendThought(date: string, entry: string): Promise<string> {
+  const path = thoughtsNotePath(date);
+
+  return withFileLock(path, async () => {
+    const existing = (await readThoughtsNote(date)) ?? emptyThoughtsNote(date);
+    const updated = `${existing.replace(/\n+$/, "")}\n\n${entry}`;
+
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${updated}\n`, "utf8");
+    return updated;
+  });
 }

@@ -33,19 +33,39 @@ it belongs to. Tools take an optional `date` only for backfilling.
 | `log_thought` | Append a thought in the user's own words. |
 | `get_day` | Read a day back, including the running calorie total. |
 
-## One day, three parts
+## Where each part lands
 
-A day note is the hub: diet and thoughts inline, training as a link. Meals
-accumulate, so `log_meal` appends. A day has one training state, so
-`log_training` replaces — calling it twice corrects rather than duplicates.
+| what | where | published |
+| --- | --- | --- |
+| meals, drinks, calories | `docs/Daily/YYYY-MM-DD.md` | yes |
+| health metrics (Garmin) | same note's frontmatter | yes |
+| training | `docs/Me/Training/session-*.md`, linked from the day | yes |
+| thoughts | `docs/private/thoughts/YYYY-MM-DD.md` | **no** |
 
-Training keeps its own note under `Me/Training/` because a session has substance
-worth comparing across weeks, and because those are published. Meals do not:
-nothing ever links to one breakfast, and there would be some 1800 of them a year.
+The day note is the hub. Meals accumulate, so `log_meal` appends. A day has one
+training state, so `log_training` replaces — calling it twice corrects rather
+than duplicates.
 
-Links run from the private day note out to public notes, never the other way.
-The site never walks `private/`, so a public note pointing back at a day would
-render as a dead link.
+Training keeps its own note because a session has substance worth comparing
+across weeks. Meals do not: nothing ever links to one breakfast, and there would
+be some 1800 of them a year.
+
+## Why thoughts are split off
+
+The repository is public, and the publisher pushes within ten minutes. Nothing
+stands between speaking into a phone and the note being online — no review step.
+
+Meals and heart rate are dull enough to publish. `log_thought` is not: it is
+specified to keep the user's own words without tidying them, which is exactly the
+material worth reading twice before it becomes permanent. Git history does not
+forget, so publishing is one-way.
+
+So the split runs along the boundary that matters — publishable or not — rather
+than along diet and training. `private/` is gitignored and the site never walks
+it, which is two independent guards rather than a flag that could be flipped.
+
+Links therefore run from private notes out to public ones, never the reverse: a
+public note pointing at a private one renders as a dead link.
 
 ## No verdict on rest days
 

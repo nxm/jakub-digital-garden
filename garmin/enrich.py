@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -33,6 +34,8 @@ MANAGED_KEYS = (
     "body_battery_morning",
     "body_battery_min",
     "body_battery_max",
+    "body_battery_charged",
+    "body_battery_drained",
     "resting_hr",
     "steps",
     "hrv_last_night",
@@ -49,6 +52,8 @@ class DayMetrics:
     body_battery_morning: int | None = None
     body_battery_min: int | None = None
     body_battery_max: int | None = None
+    body_battery_charged: int | None = None
+    body_battery_drained: int | None = None
     resting_hr: int | None = None
     steps: int | None = None
     hrv_last_night: int | None = None
@@ -59,6 +64,8 @@ class DayMetrics:
             "body_battery_morning": self.body_battery_morning,
             "body_battery_min": self.body_battery_min,
             "body_battery_max": self.body_battery_max,
+            "body_battery_charged": self.body_battery_charged,
+            "body_battery_drained": self.body_battery_drained,
             "resting_hr": self.resting_hr,
             "steps": self.steps,
             "hrv_last_night": self.hrv_last_night,
@@ -147,30 +154,82 @@ def index_by_day(rows: Any) -> dict[date, Any]:
     return indexed
 
 
+def level_column(row: Any) -> int:
+    """Which column of a Body Battery sample holds the level.
+
+    Garmin describes the tuple layout in a sibling `...DescriptorDTOList` rather
+    than fixing it, so the column is looked up by name. Index 2 is the layout
+    seen in practice and stays as the fallback.
+    """
+    descriptors = (
+        row.get("bodyBatteryValueDescriptorDTOList") if isinstance(row, dict) else None
+    )
+    if isinstance(descriptors, list):
+        for descriptor in descriptors:
+            if not isinstance(descriptor, dict):
+                continue
+            key = str(descriptor.get("bodyBatteryValueDescriptorKey", "")).lower()
+            position = descriptor.get("bodyBatteryValueDescriptorIndex")
+            if "level" in key and isinstance(position, int):
+                return position
+    return 2
+
+
 def body_battery_levels(row: Any) -> list[int]:
     """Body Battery arrives as a timeseries; the frontmatter keeps its shape."""
     series = pick(row, "bodyBatteryValuesArray", "bodyBatteryValues")
     if not isinstance(series, list):
         return []
 
+    column = level_column(row)
     levels: list[int] = []
     for sample in series:
-        # Samples are [timestamp, status, level, version] tuples.
-        if isinstance(sample, list) and len(sample) >= 3 and isinstance(sample[2], int):
-            levels.append(sample[2])
+        value: Any = None
+        if isinstance(sample, list) and len(sample) > column:
+            value = sample[column]
         elif isinstance(sample, dict):
-            level = pick(sample, "level", "bodyBatteryLevel")
-            if isinstance(level, int):
-                levels.append(level)
+            value = pick(sample, "bodyBatteryLevel", "level")
+        if isinstance(value, (int, float)):
+            levels.append(int(value))
     return levels
 
 
 def collect(
     client: Any,
     days: Sequence[date],
-) -> tuple[dict[date, DayMetrics], list[UnmappedField]]:
+) -> tuple[dict[date, DayMetrics], list[UnmappedField], Counter[str]]:
     metrics: dict[date, DayMetrics] = {day: DayMetrics() for day in days}
     unmapped: list[UnmappedField] = []
+    absent: Counter[str] = Counter()
+
+    def number(
+        sources: Sequence[dict[date, Any]], day: date, metric: str, *names: str
+    ) -> float | None:
+        """Read one numeric field, distinguishing 'no data' from 'wrong shape'.
+
+        A metric the API simply did not return is not a mapping error — the watch
+        was off the wrist, or the day has not settled yet. Counting those apart
+        keeps a real shape mismatch visible instead of buried in noise.
+
+        Several sources may carry the same number (resting heart rate arrives on
+        both the dedicated endpoint and the sleep payload), so they are tried in
+        order and the metric only counts as missing when none of them has a row.
+        """
+        rows = [row for source in sources if (row := source.get(day)) is not None]
+        for row in rows:
+            value = pick(row, *names)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return float(value)
+
+        # Only the dedicated endpoint is evidence of a mapping error. A fallback
+        # payload not carrying the field is ordinary, and reporting it as a shape
+        # mismatch would bury the real ones.
+        primary = sources[0].get(day)
+        if primary is None:
+            absent[metric] += 1
+        else:
+            unmapped.append(UnmappedField(day, metric, payload_keys(primary)))
+        return None
 
     for start, end in chunked(days):
         first, last = start.isoformat(), end.isoformat()
@@ -185,43 +244,52 @@ def collect(
         for day in (d for d in days if start <= d <= end):
             entry = metrics[day]
 
-            seconds = pick(sleep.get(day), "sleepTimeSeconds", "totalSleepSeconds")
-            if isinstance(seconds, (int, float)):
+            seconds = number(
+                [sleep], day, "sleep", "totalSleepTimeInSeconds", "sleepTimeSeconds"
+            )
+            if seconds is not None:
                 entry.sleep_hours = round(seconds / 3600, 1)
-            elif day in sleep:
-                unmapped.append(UnmappedField(day, "sleep", payload_keys(sleep[day])))
 
+            # The range endpoint sometimes carries only the daily summary, so the
+            # timeseries is optional and charged/drained are recorded either way.
             levels = body_battery_levels(battery.get(day))
             if levels:
                 entry.body_battery_morning = levels[0]
                 entry.body_battery_min = min(levels)
                 entry.body_battery_max = max(levels)
-            elif day in battery:
-                unmapped.append(
-                    UnmappedField(day, "body_battery", payload_keys(battery[day]))
-                )
 
-            resting = pick(rhr.get(day), "restingHR", "restingHeartRate")
-            if isinstance(resting, int):
-                entry.resting_hr = resting
-            elif day in rhr:
-                unmapped.append(
-                    UnmappedField(day, "resting_hr", payload_keys(rhr[day]))
-                )
+            charged = number([battery], day, "body_battery_charged", "charged")
+            if charged is not None:
+                entry.body_battery_charged = int(charged)
 
-            walked = pick(steps.get(day), "totalSteps", "steps")
-            if isinstance(walked, (int, float)):
+            # Garmin reports drainage as a negative number; the note keeps it as
+            # a magnitude so the two Body Battery figures read side by side.
+            drained = number([battery], day, "body_battery_drained", "drained")
+            if drained is not None:
+                entry.body_battery_drained = abs(int(drained))
+
+            resting = number(
+                [rhr, sleep],
+                day,
+                "resting_hr",
+                "value",
+                "restingHR",
+                "restingHeartRate",
+            )
+            if resting is not None:
+                entry.resting_hr = int(resting)
+
+            walked = number([steps], day, "steps", "totalSteps", "steps")
+            if walked is not None:
                 entry.steps = int(walked)
-            elif day in steps:
-                unmapped.append(UnmappedField(day, "steps", payload_keys(steps[day])))
 
-            overnight = pick(hrv.get(day), "lastNightAvg", "lastNight5MinHigh")
-            if isinstance(overnight, int):
-                entry.hrv_last_night = overnight
-            elif day in hrv:
-                unmapped.append(UnmappedField(day, "hrv", payload_keys(hrv[day])))
+            overnight = number(
+                [hrv], day, "hrv", "lastNightAvg", "lastNight5MinHigh", "weeklyAvg"
+            )
+            if overnight is not None:
+                entry.hrv_last_night = int(overnight)
 
-    return metrics, unmapped
+    return metrics, unmapped, absent
 
 
 def note_path(vault: Path, day: date) -> Path:
@@ -386,12 +454,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     days = resolve_days(args)
     print(f"garmin: {len(days)} day(s), vault {vault}", file=sys.stderr)
 
-    metrics, unmapped = collect(connect(login=args.login), days)
+    metrics, unmapped, absent = collect(connect(login=args.login), days)
 
     for day in days:
         print(
             f"  {day}  {write_day(vault, day, metrics[day], force=args.force, dry_run=args.dry_run)}"
         )
+
+    if absent:
+        summary = ", ".join(
+            f"{metric} ({count})" for metric, count in sorted(absent.items())
+        )
+        print(f"\ngarmin: no data returned for {summary}", file=sys.stderr)
 
     if unmapped:
         print(

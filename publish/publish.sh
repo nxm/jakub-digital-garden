@@ -6,6 +6,15 @@
 # that gap on a timer rather than on every write: publishing a personal site is
 # not latency-sensitive, and a timer batches an editing session into one commit
 # instead of thirty.
+#
+# The repository is public and the vault is not entirely publishable, so what
+# gets staged is inspected before anything is committed. .gitignore is the first
+# line of defence, but it only covers paths someone thought of — twice already a
+# private directory was one setting away from being published.
+#
+#   GARDEN_DRY_RUN=1 publish.sh   # or: publish.sh --dry-run
+#
+# reports what would be committed and changes nothing.
 set -euo pipefail
 
 repo="${GARDEN_REPO:?GARDEN_REPO must point at the checkout}"
@@ -16,6 +25,9 @@ branch="${GARDEN_BRANCH:-main}"
 # would publish that faithfully. Anything above this is treated as an accident
 # worth a human look rather than a change worth shipping.
 max_deletions="${GARDEN_MAX_DELETIONS:-10}"
+
+dry_run="${GARDEN_DRY_RUN:-}"
+[ "${1:-}" = "--dry-run" ] && dry_run=1
 
 cd "$repo"
 
@@ -29,10 +41,45 @@ cd "$repo"
 git add -A -- docs ':(exclude)docs/.obsidian'
 
 if git diff --cached --quiet; then
+  [ -n "$dry_run" ] && echo "publish: nothing to publish"
   exit 0
 fi
 
 mapfile -t changed < <(git diff --cached --name-only)
+
+# Directory names are what get checked, not filenames. A note called
+# "private equity.md" is ordinary writing; a directory called private/ is the
+# vault's unpublished half, and a dot-prefixed one is some tool's scratch space.
+suspicious=()
+for path in "${changed[@]}"; do
+  directory="${path%/*}"
+  if [ "$directory" != "$path" ]; then
+    IFS='/' read -r -a segments <<<"$directory"
+    for segment in "${segments[@]}"; do
+      case "$segment" in
+      .* | private | secrets)
+        suspicious+=("$path")
+        break
+        ;;
+      esac
+    done
+  fi
+
+  case "${path##*/}" in
+  .env | .env.* | *.pem | *.key | id_rsa | id_ed25519)
+    suspicious+=("$path")
+    ;;
+  esac
+done
+
+if [ "${#suspicious[@]}" -gt 0 ]; then
+  git reset --quiet
+  echo "publish: refusing to commit — these paths must not reach a public repository:" >&2
+  printf '  %s\n' "${suspicious[@]}" >&2
+  echo "publish: nothing was committed; add them to .gitignore or move them out of docs/" >&2
+  exit 1
+fi
+
 deleted=$(git diff --cached --name-only --diff-filter=D | wc -l | tr -d ' ')
 
 if [ "$deleted" -gt "$max_deletions" ]; then
@@ -40,6 +87,13 @@ if [ "$deleted" -gt "$max_deletions" ]; then
   echo "publish: refusing to commit — ${deleted} deletions exceed the limit of ${max_deletions}" >&2
   echo "publish: nothing was committed; inspect the vault and commit by hand if this is intended" >&2
   exit 1
+fi
+
+if [ -n "$dry_run" ]; then
+  git reset --quiet
+  echo "publish: would commit ${#changed[@]} file(s), ${deleted} deletion(s)"
+  printf '  %s\n' "${changed[@]}"
+  exit 0
 fi
 
 printf -v body '%s\n' "${changed[@]}"

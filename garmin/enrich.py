@@ -29,6 +29,11 @@ ROLLOVER_HOUR = 4
 # long spans, so requests are chunked conservatively rather than optimistically.
 CHUNK_DAYS = 28
 
+# How long an incomplete day stays worth re-fetching. Long enough to survive a
+# holiday without syncing the watch, short enough that a day which genuinely
+# never recorded a metric stops being retried.
+SETTLE_DAYS = 10
+
 MANAGED_KEYS = (
     "sleep_hours",
     "body_battery_morning",
@@ -206,10 +211,13 @@ def body_battery_levels(row: Any) -> list[int]:
 def collect(
     client: Any,
     days: Sequence[date],
-) -> tuple[dict[date, DayMetrics], list[UnmappedField], Counter[str]]:
+) -> tuple[dict[date, DayMetrics], list[UnmappedField], dict[date, set[str]]]:
     metrics: dict[date, DayMetrics] = {day: DayMetrics() for day in days}
     unmapped: list[UnmappedField] = []
-    absent: Counter[str] = Counter()
+
+    # Tracked per day, not merely counted: whether a day is worth fetching again
+    # depends on what that particular day is still missing.
+    absent: dict[date, set[str]] = {day: set() for day in days}
 
     def number(
         sources: Sequence[dict[date, Any]], day: date, metric: str, *names: str
@@ -235,7 +243,7 @@ def collect(
         # mismatch would bury the real ones.
         primary = sources[0].get(day)
         if primary is None:
-            absent[metric] += 1
+            absent[day].add(metric)
         else:
             unmapped.append(UnmappedField(day, metric, payload_keys(primary)))
         return None
@@ -355,8 +363,34 @@ def already_final(note: str) -> bool:
     return "garmin_final: true" in lines
 
 
+def is_settled(day: date, *, complete: bool, now: datetime | None = None) -> bool:
+    """Whether a day will never be worth fetching again.
+
+    A finished day is not the same as a finished record: if the watch had not
+    synced when the timer ran, some metrics are simply not there yet, and a day
+    marked final on elapsed time alone would keep those holes forever.
+
+    The escape hatch is age. Garmin does not backfill weeks later, so past the
+    settle window an incomplete day is accepted as incomplete rather than
+    re-fetched on every run for the rest of time.
+    """
+    if not log_day_is_final(day, now):
+        return False
+    if complete:
+        return True
+
+    today = (now or datetime.now(TIMEZONE)).date()
+    return (today - day).days > SETTLE_DAYS
+
+
 def write_day(
-    vault: Path, day: date, metrics: DayMetrics, *, force: bool, dry_run: bool
+    vault: Path,
+    day: date,
+    metrics: DayMetrics,
+    *,
+    complete: bool,
+    force: bool,
+    dry_run: bool,
 ) -> str:
     path = note_path(vault, day)
     note = existing_note(path)
@@ -366,9 +400,10 @@ def write_day(
     if metrics.is_empty():
         return "no data"
 
+    settled = is_settled(day, complete=complete)
     updates = metrics.as_frontmatter()
     updates["garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
-    updates["garmin_final"] = "true" if log_day_is_final(day) else "false"
+    updates["garmin_final"] = "true" if settled else "false"
 
     updated = apply_frontmatter(note if note is not None else empty_note(day), updates)
     if dry_run:
@@ -466,15 +501,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     metrics, unmapped, absent = collect(connect(login=args.login), days)
 
     for day in days:
-        print(
-            f"  {day}  {write_day(vault, day, metrics[day], force=args.force, dry_run=args.dry_run)}"
+        outcome = write_day(
+            vault,
+            day,
+            metrics[day],
+            complete=not absent[day],
+            force=args.force,
+            dry_run=args.dry_run,
         )
+        print(f"  {day}  {outcome}")
 
-    if absent:
+    missing: Counter[str] = Counter(
+        metric for metrics_missing in absent.values() for metric in metrics_missing
+    )
+    if missing:
         summary = ", ".join(
-            f"{metric} ({count})" for metric, count in sorted(absent.items())
+            f"{metric} ({count})" for metric, count in sorted(missing.items())
         )
         print(f"\ngarmin: no data returned for {summary}", file=sys.stderr)
+        print(
+            "Those days stay open and are re-fetched until they settle.",
+            file=sys.stderr,
+        )
 
     if unmapped:
         print(

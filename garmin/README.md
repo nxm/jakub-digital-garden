@@ -22,16 +22,27 @@ python enrich.py --days 30 --dry-run
 
 ## Partial days
 
-A day enriched at 14:00 has incomplete steps and Body Battery. Each note
-records whether the day had fully elapsed when it was fetched:
+A day enriched at 14:00 has incomplete steps and Body Battery, and a day whose
+watch had not synced yet may be missing metrics entirely. Each note records
+when it was fetched and whether it is done with:
 
 ```yaml
 garmin_synced: 2026-08-18T05:12+02:00
 garmin_final: true
 ```
 
-Days marked `garmin_final: true` are skipped on later runs unless `--force` is
-passed, so a nightly cron converges without re-fetching settled history.
+`garmin_final` means **the day is over and nothing is missing** — not merely
+that the date has passed. A day written with holes stays open and is fetched
+again on later runs, which is what makes an unsynced watch recoverable instead
+of permanently lossy.
+
+The escape hatch is age: past `SETTLE_DAYS` an incomplete day is accepted as
+incomplete. Garmin does not backfill weeks later, and without a cutoff a day
+that genuinely never recorded HRV would be re-fetched forever.
+
+Days marked final are skipped unless `--force` is passed, so the nightly run
+converges without re-fetching settled history. Its window is wider than a
+couple of days precisely so that still-open ones stay in reach.
 
 ## Fields written
 

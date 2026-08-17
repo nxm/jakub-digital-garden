@@ -4,7 +4,7 @@ import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod";
 import { assertDate, assertTime, localTime, logDay } from "./day.js";
-import { appendEntry, appendThought, readDayNote, recordTraining, totalKcal } from "./vault.js";
+import { appendEntry, appendThought, readDayNote, recordTraining, totals } from "./vault.js";
 
 const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
@@ -56,6 +56,9 @@ function buildServer(): McpServer {
               name: z.string().min(1),
               portion: z.string().min(1).describe('Estimated portion, e.g. "200 g" or "1 glass".'),
               kcal: z.number().int().nonnegative(),
+              protein: z.number().int().nonnegative().optional().describe("Grams of protein."),
+              carbs: z.number().int().nonnegative().optional().describe("Grams of carbohydrate."),
+              fat: z.number().int().nonnegative().optional().describe("Grams of fat."),
             }),
           )
           .min(1),
@@ -71,7 +74,16 @@ function buildServer(): McpServer {
     async ({ label, kind, items, note, contains_fish, date, time }) => {
       const day = date ? assertDate(date) : logDay();
       const stamp = time ? assertTime(time) : localTime();
-      const kcal = items.reduce((sum, item) => sum + item.kcal, 0);
+      const sum = (key: "kcal" | "protein" | "carbs" | "fat"): number =>
+        items.reduce((running, item) => running + (item[key] ?? 0), 0);
+
+      const kcal = sum("kcal");
+      const macros = { protein: sum("protein"), carbs: sum("carbs"), fat: sum("fat") };
+      const hasMacros = macros.protein + macros.carbs + macros.fat > 0;
+
+      const marker = ["kcal=" + kcal]
+        .concat(hasMacros ? Object.entries(macros).map(([k, v]) => `${k}=${v}`) : [])
+        .join(" ");
 
       const entry = [
         `### ${stamp} — ${label}`,
@@ -79,12 +91,18 @@ function buildServer(): McpServer {
         ...(contains_fish
           ? ["> [!warning] Possible fish or seafood — you are allergic. Check before eating.", ""]
           : []),
-        "| item | portion | kcal |",
-        "| --- | --- | --- |",
-        ...items.map((item) => `| ${item.name} | ${item.portion} | ${item.kcal} |`),
+        hasMacros ? "| item | portion | kcal | P | C | F |" : "| item | portion | kcal |",
+        hasMacros ? "| --- | --- | --- | --- | --- | --- |" : "| --- | --- | --- |",
+        ...items.map((item) =>
+          hasMacros
+            ? `| ${item.name} | ${item.portion} | ${item.kcal} | ${item.protein ?? "—"} | ${item.carbs ?? "—"} | ${item.fat ?? "—"} |`
+            : `| ${item.name} | ${item.portion} | ${item.kcal} |`,
+        ),
         "",
         ...(note ? [note, ""] : []),
-        `**~${kcal} kcal** <!-- kcal=${kcal} -->`,
+        hasMacros
+          ? `**~${kcal} kcal** · P ${macros.protein} g · C ${macros.carbs} g · F ${macros.fat} g <!-- totals ${marker} -->`
+          : `**~${kcal} kcal** <!-- totals ${marker} -->`,
       ].join("\n");
 
       const updated = await appendEntry(day, kind === "drink" ? "Drinks" : "Meals", entry);
@@ -93,7 +111,7 @@ function buildServer(): McpServer {
         content: [
           {
             type: "text" as const,
-            text: `Logged "${label}" (~${kcal} kcal) to ${day} at ${stamp}. Day total: ~${totalKcal(updated)} kcal.`,
+            text: `Logged "${label}" (~${kcal} kcal) to ${day} at ${stamp}. Day total: ~${totals(updated).kcal} kcal.`,
           },
         ],
       };
@@ -105,8 +123,9 @@ function buildServer(): McpServer {
     {
       description:
         "Append a thought, idea or observation to the day's private notes. Keep the user's own " +
-        "words — do not summarise or tidy them. Unlike meals and training, thoughts are never " +
-        "published: they go to a note the site does not build and the repository does not track.",
+        "words, in the language they used — do not summarise, tidy or translate them. Meals and " +
+        "training get rewritten in English because they are published; thoughts are not, and a thought " +
+        "loses its edge in translation. Keep it exactly as it was said.",
       inputSchema: z.object({
         text: z.string().min(1),
         date: dateField,
@@ -131,7 +150,8 @@ function buildServer(): McpServer {
         "Do not judge whether a rest was planned or a session was skipped — the weekly plan in " +
         "Me/Training.md already says what the day was for, and comparing it against what happened " +
         "is more honest than a label chosen after the fact. Give a reason only if there is a real " +
-        "one, like illness or travel; otherwise leave it out.",
+        "one, like illness or travel; otherwise leave it out. Write the summary and reason in English " +
+        "whatever language the request came in — these notes are published.",
       inputSchema: z.object({
         minutes: z
           .number()
@@ -173,7 +193,7 @@ function buildServer(): McpServer {
               minutes > 0
                 ? `Logged ${minutes} min of training to ${day}.`
                 : `Recorded ${day} as a rest day.` +
-                  ` Day total still ~${totalKcal(updated)} kcal.`,
+                  ` Day total still ~${totals(updated).kcal} kcal.`,
           },
         ],
       };

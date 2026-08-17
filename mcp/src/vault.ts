@@ -7,9 +7,15 @@ import { assertDate, dayTitle } from "./day.js";
 export const SECTIONS = ["Meals", "Drinks", "Training"] as const;
 export type Section = (typeof SECTIONS)[number];
 
-// Each intake entry carries its calories in an HTML comment: invisible in
-// Obsidian's reading view, but trivial to re-sum when refreshing the total.
-const KCAL_MARKER = /<!-- kcal=(\d+) -->/g;
+// Each intake entry carries its numbers in an HTML comment: invisible in
+// Obsidian's reading view, but trivial to re-sum when refreshing the totals.
+// Macros are optional, so a marker only names what that entry actually had.
+// Both spellings: entries written before macros existed carry a bare
+// `<!-- kcal=289 -->`, and dropping them would silently deflate a day's total
+// the next time anything is logged to it.
+const TOTALS_MARKER = /<!-- (?:totals )?((?:\w+=\d+\s*)+)-->/g;
+
+export type Totals = { kcal: number; protein: number; carbs: number; fat: number };
 
 const vaultRoot = resolve(process.env["VAULT_PATH"] ?? join(import.meta.dirname, "..", "..", "docs"));
 
@@ -131,14 +137,29 @@ function setFrontmatter(note: string, key: string, value: string): string {
   return `${note.slice(0, closing)}\n${key}: ${value}${note.slice(closing)}`;
 }
 
-export function totalKcal(note: string): number {
-  let total = 0;
-  for (const match of note.matchAll(KCAL_MARKER)) total += Number(match[1]);
-  return total;
+export function totals(note: string): Totals {
+  const summed: Totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+
+  for (const [, fields] of note.matchAll(TOTALS_MARKER)) {
+    for (const [, key, value] of (fields ?? "").matchAll(/(\w+)=(\d+)/g)) {
+      if (key && key in summed) summed[key as keyof Totals] += Number(value);
+    }
+  }
+
+  return summed;
 }
 
-function refreshKcalTotal(note: string): string {
-  return setFrontmatter(note, "kcal", String(totalKcal(note)));
+/** Macros stay out of the frontmatter until something reports them, so a day
+ *  logged without them shows no protein rather than a misleading zero. */
+function refreshTotals(note: string): string {
+  const summed = totals(note);
+  let updated = setFrontmatter(note, "kcal", String(summed.kcal));
+
+  for (const macro of ["protein", "carbs", "fat"] as const) {
+    if (summed[macro] > 0) updated = setFrontmatter(updated, `${macro}_g`, String(summed[macro]));
+  }
+
+  return updated;
 }
 
 // Appends are serialised per file: two tool calls landing in the same second
@@ -158,7 +179,7 @@ async function updateNote(date: string, change: (note: string) => string): Promi
   const path = dayNotePath(date);
 
   return withFileLock(path, async () => {
-    const updated = refreshKcalTotal(change((await readDayNote(date)) ?? emptyNote(date)));
+    const updated = refreshTotals(change((await readDayNote(date)) ?? emptyNote(date)));
 
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${updated.replace(/\n+$/, "")}\n`, "utf8");

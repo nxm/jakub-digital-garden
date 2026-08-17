@@ -29,7 +29,6 @@
 
 **Make it easy (response)**
 - Keep only healthy food in the fridge — no snacks, so junk food is never an option
-- Keep no alcohol or cigarettes in the apartment
 - Book workouts as appointments with friends so I can't back out
 - Prep the running outfit in advance — zero friction to start
 - Fixed sleep rule: to wake at 8:30, I'm in bed by 1:10 at the latest (7 h + 20 min buffer). No excuses.
@@ -157,78 +156,7 @@
 
 # Bad habits
 
-## 1. Cigarettes
-
-**Why do I do it?**
-- A strange urge
-- Social pull — if someone smokes, I want to smoke too
-- It "goes better" with alcohol
-- It relieves stress for a second
-
-**Advantages:** none
-
-**Disadvantages:**
-- Worse physical fitness
-- Yellow teeth
-- It stinks
-- It makes me unhealthy (cancer risk)
-
-**Make it invisible (cue)**
-- Keep no cigarettes in the apartment, car, or bag
-- Avoid the smoking corner at parties; stand with the non-smokers
-- Cut alcohol, which is the main trigger
-
-**Make it unattractive (craving)**
-- I am a healthy, athletic person — smokers are not who I want to be
-- Reframe it: yellow teeth, stinking clothes, ruined lungs
-- Remember it gives me nothing — zero real advantages
-
-**Make it difficult (response)**
-- Never carry cigarettes or a lighter — force a walk to a shop to get one
-- Tell friends I've quit, so asking for one is embarrassing
-- Put a real cost on it (a bet / forfeit with a friend for every cigarette)
-
-**Make it unsatisfying (reward)**
-- Track "days smoke-free" and refuse to break the streak
-- Put the money I'd spend on cigarettes into a visible jar / savings goal
-- Ask a friend to hold me accountable — reporting a slip stings
-
-## 2. Alcohol
-
-**Why do I do it?**
-- Sometimes the same strange urge
-- Social pull
-- It's seen as relaxing
-
-**Advantages:** none
-
-**Disadvantages:**
-- It kills brain cells
-- I lose my mental clarity
-- The hangover is brutal
-- It's risky — bad things can happen after drinking
-
-**Make it invisible (cue)**
-- Keep no alcohol at home
-- Order a non-alcoholic drink first at social events so I'm never empty-handed
-- Avoid the "let's grab a drink" default — suggest coffee, food, or activity instead
-
-**Make it unattractive (craving)**
-- I am someone with a clear, sharp mind — drinking is the opposite of that
-- Picture the hangover and the wasted next day before the first drink
-- Remember it offers no real advantage
-
-**Make it difficult (response)**
-- Be the designated driver — a built-in reason not to drink
-- Set a hard drink limit before going out and tell a friend
-- Don't keep cash / card easy for buying rounds
-
-**Make it unsatisfying (reward)**
-- Track alcohol-free days
-- Notice and log how good the clear-headed mornings feel
-- Accountability partner for nights out
-
-## 3. Doom-scrolling
+## 1. Doom-scrolling
 
 **Why do I do it?**
 - FOMO
@@ -260,7 +188,7 @@
 - Replace the scroll with a better default (a book within reach)
 - Tell myself the trade honestly: those minutes came from sleep, training, or work
 
-## 4. Junk food
+## 2. Junk food
 
 **Why do I do it?**
 - It's easy — ready to eat
@@ -294,7 +222,7 @@
 - Notice how much better I feel and train when I eat well
 - Log meals so the slips are visible
 
-## 5. Irregular sleep patterns
+## 3. Irregular sleep patterns
 
 **Why do I do it?**
 - I tell myself I'm a night person — probably just an excuse

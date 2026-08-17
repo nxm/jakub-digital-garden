@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import * as http from "node:http";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
-import { toNodeHandler } from "@modelcontextprotocol/node";
+import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod";
 import { assertDate, assertTime, localTime, logDay } from "./day.js";
 import { appendEntry, readDayNote, totalKcal } from "./vault.js";
@@ -10,6 +10,14 @@ const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
 
 const port = Number(process.env["PORT"] ?? 8787);
+
+// Loopback by default: in production a tunnel reaches this over localhost, and
+// binding every interface would put a vault writer on the network by accident.
+const host = process.env["HOST"] ?? "127.0.0.1";
+
+// The transport does not check the Host header on its own. Behind a proxy the
+// forwarded name has to be listed here too, or the guard rejects real traffic.
+const allowedHosts = (process.env["ALLOWED_HOSTS"] ?? "localhost 127.0.0.1 [::1]").split(/\s+/).filter(Boolean);
 
 const dateField = z
   .string()
@@ -138,13 +146,18 @@ function isAuthorised(request: http.IncomingMessage): boolean {
 }
 
 const mcpHandler = toNodeHandler(createMcpHandler(() => buildServer()));
+const validateHost = hostHeaderValidation(allowedHosts);
 
 http
   .createServer((request, response) => {
+    // Unauthenticated on purpose so a proxy can probe it; it says nothing else.
     if (request.url === "/health") {
       response.writeHead(200, { "content-type": "text/plain" }).end("ok");
       return;
     }
+
+    // Answers 403 itself when it returns false.
+    if (!validateHost(request, response)) return;
 
     if (!isAuthorised(request)) {
       response.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "unauthorized" }));
@@ -153,6 +166,6 @@ http
 
     mcpHandler(request, response);
   })
-  .listen(port, () => {
-    console.log(`garden-log MCP listening on :${port}`);
+  .listen(port, host, () => {
+    console.log(`garden-log MCP listening on ${host}:${port}`);
   });

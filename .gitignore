@@ -29,6 +29,11 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# --- Private vault notes -----------------------------------------
+# The engine already keeps docs/private/ out of the built site, but this
+# repository is public — committing it would publish the source anyway.
+docs/private/
+
 # --- Obsidian per-user state (commit the rest of .obsidian/) -----
 # Root-level Obsidian state (repo opened as a vault by mistake — vault is docs/).
 /.obsidian/

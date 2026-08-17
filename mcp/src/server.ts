@@ -42,7 +42,11 @@ function buildServer(): McpServer {
       description:
         "Record something eaten or drunk in today's log. Identify the items and estimate portions from the " +
         "photo or description, then pass them as a list — the server sums the calories itself. " +
-        "Set contains_fish whenever fish or seafood may be present: the user is allergic.",
+        "Set contains_fish whenever fish or seafood may be present: the user is allergic. " +
+        "Write every label and item name in English no matter what language the user used: the vault is " +
+        'written in English and these notes are published. Translate the dish ("jajecznica" becomes ' +
+        '"scrambled eggs"), and keep the Polish name alongside only when the dish has no English ' +
+        'equivalent worth translating, like "pierogi".',
       inputSchema: z.object({
         label: z.string().min(1).describe('Short name for the entry, e.g. "Breakfast smoothie".'),
         kind: z.enum(["meal", "drink"]).default("meal"),

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { assertDate } from "./day.js";
+import { assertDate, dayTitle } from "./day.js";
 
 // What you ate and what you trained, in that order. Thoughts are deliberately
 // not here: they live in a separate note that never reaches the repository.
@@ -34,7 +34,7 @@ export function thoughtsNotePath(date: string): string {
 function emptyNote(date: string): string {
   return [
     "---",
-    `title: ${date}`,
+    `title: ${dayTitle(date)}`,
     `date: ${date}`,
     "tags:",
     "  - daily",

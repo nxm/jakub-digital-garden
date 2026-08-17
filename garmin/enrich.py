@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from collections import Counter
 from collections.abc import Iterator, Sequence
@@ -216,6 +217,27 @@ def body_battery_levels(row: Any) -> list[int]:
     return levels
 
 
+# Spelled out rather than taken from strftime("%A"): that follows the process
+# locale, and on a host set to pl_PL the titles would come out "poniedziałek"
+# while the rest of the vault is in English.
+WEEKDAYS = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
+
+def day_title(day: date) -> str:
+    """`2026-08-17 · Monday · W34` — ISO weeks, so Sunday closes the week."""
+    return (
+        f"{day.isoformat()} · {WEEKDAYS[day.weekday()]} · W{day.isocalendar().week:02d}"
+    )
+
+
 def wall_clock(millis: Any) -> str | None:
     """HH:MM from Garmin's `local...InMillis` fields.
 
@@ -345,7 +367,7 @@ def empty_note(day: date) -> str:
     """Frontmatter only — the MCP server creates section headings on first use."""
     return (
         "---\n"
-        f"title: {day.isoformat()}\n"
+        f"title: {day_title(day)}\n"
         f"date: {day.isoformat()}\n"
         "tags:\n"
         "  - daily\n"
@@ -369,6 +391,15 @@ def is_managed(line: str) -> bool:
     if not line or line.startswith((" ", "-", "\t")):
         return False
     return line.split(":", 1)[0] in MANAGED_KEYS
+
+
+def set_title(note: str, day: date) -> str:
+    """Rewrites the title in place, so old notes pick up the new format.
+
+    Kept out of MANAGED_KEYS on purpose: those get stripped and re-appended,
+    which would drop the title to the bottom of the frontmatter.
+    """
+    return re.sub(r"^title: .*$", f"title: {day_title(day)}", note, count=1, flags=re.M)
 
 
 def apply_frontmatter(note: str, updates: dict[str, str]) -> str:
@@ -432,7 +463,9 @@ def write_day(
     updates["_garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
     updates["_garmin_final"] = "true" if settled else "false"
 
-    updated = apply_frontmatter(note if note is not None else empty_note(day), updates)
+    updated = set_title(
+        apply_frontmatter(note if note is not None else empty_note(day), updates), day
+    )
     if dry_run:
         return f"would write {len(updates) - 2} metrics"
 

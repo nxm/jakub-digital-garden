@@ -63,6 +63,32 @@ export function localTime(instant: Date = new Date(), timeZone: string = DEFAULT
   return `${String(parts.hour).padStart(2, "0")}:${String(parts.minute).padStart(2, "0")}`;
 }
 
+// Spelled out rather than taken from Intl: the day note is written in English
+// regardless of what locale the host happens to run under.
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** ISO-8601 week number, so a week runs Monday to Sunday. */
+function isoWeek(date: string): number {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const point = new Date(Date.UTC(year, month - 1, day));
+
+  // Shift to the Thursday of this week: the ISO year is whichever year that
+  // Thursday falls in, which is what makes the turn of the year come out right.
+  const weekday = point.getUTCDay() || 7;
+  point.setUTCDate(point.getUTCDate() + 4 - weekday);
+
+  const yearStart = Date.UTC(point.getUTCFullYear(), 0, 1);
+  return Math.ceil(((point.getTime() - yearStart) / 86_400_000 + 1) / 7);
+}
+
+/** `2026-08-17 · Monday · W34` */
+export function dayTitle(date: string): string {
+  const [year, month, day] = assertDate(date).split("-").map(Number) as [number, number, number];
+  const weekday = (new Date(Date.UTC(year, month - 1, day)).getUTCDay() + 6) % 7;
+
+  return `${date} · ${WEEKDAYS[weekday]} · W${String(isoWeek(date)).padStart(2, "0")}`;
+}
+
 export function assertDate(value: string): string {
   if (!DATE_RE.test(value)) throw new Error(`Expected a YYYY-MM-DD date, got "${value}"`);
   return value;

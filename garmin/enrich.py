@@ -322,18 +322,42 @@ def resolve_days(args: argparse.Namespace) -> list[date]:
     return [today - timedelta(days=offset) for offset in range(args.days - 1, -1, -1)]
 
 
-def connect() -> Any:
+def token_store() -> str:
+    return str(Path(os.environ.get("GARMIN_TOKENS", "~/.garminconnect")).expanduser())
+
+
+def connect(*, login: bool) -> Any:
+    """Resume a cached Garmin session, or start one under --login.
+
+    Accounts with MFA cannot be logged into unattended, and Garmin rate-limits
+    the login endpoints by IP — two of the three strategies answer 429 after a
+    handful of attempts. So a normal run never touches credentials: it either
+    resumes from the token cache or fails and says how to create one.
+    """
     from garminconnect import Garmin  # imported lazily so --help works without it
+
+    tokens = token_store()
+
+    if not login:
+        client = Garmin()
+        try:
+            client.login(tokens)
+        except Exception as error:
+            raise SystemExit(
+                f"No usable Garmin session in {tokens} ({error}).\n"
+                "Run this once, interactively, to create one:\n"
+                "  GARMIN_EMAIL=... GARMIN_PASSWORD=... enrich.py --login"
+            ) from error
+        return client
 
     email = os.environ.get("GARMIN_EMAIL")
     password = os.environ.get("GARMIN_PASSWORD")
     if not email or not password:
-        raise SystemExit(
-            "GARMIN_EMAIL and GARMIN_PASSWORD are required for the first login"
-        )
+        raise SystemExit("GARMIN_EMAIL and GARMIN_PASSWORD are required for --login")
 
-    client = Garmin(email, password)
-    client.login(os.environ.get("GARMIN_TOKENS", "~/.garminconnect"))
+    client = Garmin(email, password, prompt_mfa=lambda: input("Garmin MFA code: "))
+    client.login(tokens)
+    print(f"garmin: session cached in {tokens}", file=sys.stderr)
     return client
 
 
@@ -349,6 +373,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--force", action="store_true", help="Re-fetch days already marked final"
     )
     parser.add_argument("--dry-run", action="store_true", help="Report without writing")
+    parser.add_argument(
+        "--login",
+        action="store_true",
+        help="Log in with credentials and cache the session; prompts for the MFA code",
+    )
     args = parser.parse_args(argv)
 
     vault = Path(
@@ -357,7 +386,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     days = resolve_days(args)
     print(f"garmin: {len(days)} day(s), vault {vault}", file=sys.stderr)
 
-    metrics, unmapped = collect(connect(), days)
+    metrics, unmapped = collect(connect(login=args.login), days)
 
     for day in days:
         print(

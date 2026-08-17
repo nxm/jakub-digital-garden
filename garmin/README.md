@@ -74,14 +74,27 @@ Expect to adjust `pick()` once after the first real run.
 
 ## Setup
 
+Log in once, interactively — the account has MFA, so there is a code to type:
+
 ```shell
 pip install -r requirements.txt
-GARMIN_EMAIL=you@example.com GARMIN_PASSWORD=... python enrich.py --days 3
+GARMIN_EMAIL=you@example.com GARMIN_PASSWORD=... python enrich.py --login --dry-run
 ```
 
-Credentials are only needed for the first login; `garth` then caches OAuth
-tokens under `~/.garminconnect` (mode 0600) and refreshes them automatically.
-Set `GARMIN_TOKENS` to move that directory.
+Every later run resumes the cached session and never touches the password:
+
+```shell
+python enrich.py --days 3 --dry-run
+```
+
+**A normal run will not log in.** MFA cannot be answered by a timer, and Garmin
+rate-limits its login endpoints by IP — two of the three strategies start
+answering `429` after a handful of attempts, which is exactly the hole an
+automatic retry would dig. So without a cached session the script stops and
+says how to make one, rather than trying.
+
+`garth` keeps the tokens under `~/.garminconnect` (mode 0600) and refreshes
+them on its own. Set `GARMIN_TOKENS` to move that directory.
 
 This uses Garmin's private endpoints — there is no free official API for
 personal use. It is a grey area under Garmin's terms and will break when they

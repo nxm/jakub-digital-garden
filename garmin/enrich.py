@@ -143,6 +143,15 @@ def day_of(payload: Any) -> date | None:
 
 
 def index_by_day(rows: Any) -> dict[date, Any]:
+    # Not every endpoint returns a bare list: HRV wraps its days in an object.
+    # Unwrapping here rather than at the call site keeps a container shape from
+    # looking like an absent metric, which is a far more misleading failure.
+    if isinstance(rows, dict) and day_of(rows) is None:
+        for value in rows.values():
+            if isinstance(value, list):
+                rows = value
+                break
+
     if not isinstance(rows, list):
         rows = [rows]
 

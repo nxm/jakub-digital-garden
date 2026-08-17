@@ -494,6 +494,41 @@ th {
 }
 td { color: var(--fg); }
 
+/* ----- Frontmatter fields ----- */
+
+/* Wraps into columns rather than stacking: a day note carries ten metrics, and
+   one per row would push the note's actual content below the fold. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.1rem 1.5rem;
+  margin: 0 0 1.75rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.86rem;
+}
+.fields-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.28rem 0;
+}
+.fields dt {
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  align-self: center;
+}
+.fields dd {
+  margin: 0;
+  color: var(--fg-strong);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* ----- Listing ----- */
 
 .listing { margin-top: 1.6rem; border-top: 1px solid var(--border); }

@@ -50,6 +50,16 @@ Training keeps its own note because a session has substance worth comparing
 across weeks. Meals do not: nothing ever links to one breakfast, and there would
 be some 1800 of them a year.
 
+## Frontmatter is now published too
+
+The engine renders every frontmatter key it does not act on itself as a metadata
+block above the note. That is what makes sleep hours and calories visible rather
+than merely recorded — but it also means **any key added to a published note
+becomes public**, which is a decision, not a detail.
+
+Keys prefixed with `_` are skipped. Use that for bookkeeping a reader has no use
+for: `_garmin_synced`, `_garmin_final`.
+
 ## Why thoughts are split off
 
 The repository is public, and the publisher pushes within ten minutes. Nothing

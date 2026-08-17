@@ -1,6 +1,6 @@
 import { join, posix } from "node:path";
 import { slugifyPath } from "./markdown";
-import type { Menu, Page } from "./types";
+import type { Menu, Page, PageField } from "./types";
 
 export interface ListingContext {
   children: Page[];
@@ -169,6 +169,20 @@ function renderSeoMeta(page: Page, menu: Menu): string {
     .join("\n  ");
 }
 
+/** Author-supplied frontmatter, rendered above the note body. */
+function renderFields(fields?: PageField[]): string {
+  if (!fields || fields.length === 0) return "";
+
+  const rows = fields
+    .map(
+      (field) =>
+        `<div class="fields-row"><dt>${escapeHtml(field.label)}</dt><dd>${escapeHtml(field.value)}</dd></div>`,
+    )
+    .join("\n");
+
+  return `<dl class="fields">\n${rows}\n</dl>\n`;
+}
+
 export function render(page: Page, menu: Menu, listing?: ListingContext, hasRail = false): string {
   const prefix = relativePrefix(page.slug);
   const seoTitle = page.seo?.title ?? page.title;
@@ -176,7 +190,7 @@ export function render(page: Page, menu: Menu, listing?: ListingContext, hasRail
   const documentTitle = isHome ? menu.title : `${seoTitle} | ${menu.title}`;
   const seoMeta = renderSeoMeta(page, menu);
 
-  let content = page.content;
+  let content = renderFields(page.fields) + page.content;
   if (listing && listing.children.length > 0) {
     content = injectListing(content, listing, page.slug);
   }

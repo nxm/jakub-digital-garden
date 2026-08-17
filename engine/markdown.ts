@@ -4,7 +4,7 @@ import hljs from "highlight.js";
 import matter from "gray-matter";
 import { posix } from "node:path";
 import { renderShortcodes } from "./shortcodes";
-import type { Page, PageSeo } from "./types";
+import type { Page, PageField, PageSeo } from "./types";
 
 const marked = new Marked(
   markedHighlight({
@@ -412,6 +412,49 @@ export interface ParseOptions {
   fileUpdatedAt?: string;
 }
 
+// Keys the engine acts on itself. Everything else in the frontmatter is the
+// author's own data — sleep hours, calories, a book's rating — and gets shown on
+// the page, since a value invisible to readers may as well not be recorded.
+const ENGINE_KEYS = new Set([
+  "title",
+  "description",
+  "date",
+  "updated",
+  "updatedAt",
+  "order",
+  "template",
+  "publish",
+  "draft",
+  "unlisted",
+  "aliases",
+  "tags",
+  "listing",
+  "listing_page_size",
+  "keywords",
+  "noindex",
+  "seo_title",
+  "seo_description",
+  "seo_canonical",
+  "seo_image",
+  "seo_keywords",
+  "seo_noindex",
+]);
+
+function collectFields(metadata: Record<string, unknown>): PageField[] {
+  const fields: PageField[] = [];
+
+  for (const [key, value] of Object.entries(metadata)) {
+    if (ENGINE_KEYS.has(key)) continue;
+    // A leading underscore marks bookkeeping a reader has no use for — when a
+    // tool last synced, whether it considers a day settled.
+    if (key.startsWith("_")) continue;
+    if (value === null || value === undefined || typeof value === "object") continue;
+    fields.push({ key, label: key.replaceAll("_", " "), value: String(value) });
+  }
+
+  return fields;
+}
+
 export function parse(filepath: string, raw: string, options: ParseOptions = {}): Page {
   const { data, content } = matter(raw);
   const metadata = data as Record<string, unknown>;
@@ -448,6 +491,7 @@ export function parse(filepath: string, raw: string, options: ParseOptions = {})
     tags: asStringList(metadata.tags),
     listing: asBoolean(metadata.listing),
     listingPageSize: asNumber(metadata.listing_page_size),
+    fields: collectFields(metadata),
     links: [...links],
     content: marked.parse(source, { async: false }) as string,
     raw: content,

@@ -44,8 +44,8 @@ MANAGED_KEYS = (
     "resting_hr",
     "steps",
     "hrv_last_night",
-    "garmin_synced",
-    "garmin_final",
+    "_garmin_synced",
+    "_garmin_final",
 )
 
 
@@ -359,7 +359,7 @@ def existing_note(path: Path) -> str | None:
 
 def already_final(note: str) -> bool:
     lines, _ = split_frontmatter(note)
-    return "garmin_final: true" in lines
+    return "_garmin_final: true" in lines
 
 
 def is_settled(day: date, *, complete: bool, now: datetime | None = None) -> bool:
@@ -401,8 +401,8 @@ def write_day(
 
     settled = is_settled(day, complete=complete)
     updates = metrics.as_frontmatter()
-    updates["garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
-    updates["garmin_final"] = "true" if settled else "false"
+    updates["_garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
+    updates["_garmin_final"] = "true" if settled else "false"
 
     updated = apply_frontmatter(note if note is not None else empty_note(day), updates)
     if dry_run:

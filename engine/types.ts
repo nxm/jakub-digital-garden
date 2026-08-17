@@ -27,6 +27,13 @@ export interface PageSeo {
   noindex?: boolean;
 }
 
+/** A frontmatter entry the engine does not act on, rendered for the reader. */
+export interface PageField {
+  key: string;
+  label: string;
+  value: string;
+}
+
 export interface Page {
   slug: string;
   title: string;
@@ -44,6 +51,8 @@ export interface Page {
   tags?: string[];
   listing?: boolean;
   listingPageSize?: number;
+  /** Author-supplied frontmatter, shown as a metadata block. */
+  fields?: PageField[];
   /** Resolved slugs this page links to (wikilinks + internal .md links). */
   links?: string[];
   raw: string;

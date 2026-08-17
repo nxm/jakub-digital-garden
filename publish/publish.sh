@@ -21,7 +21,12 @@ cd "$repo"
 
 # Only the vault is published from here. Code changes arrive by pull, and
 # staging them too would let a half-finished edit on this host reach the site.
-git add -A -- docs
+#
+# .obsidian is excluded rather than gitignored: the settings in it matter and
+# belong in the repository, but Obsidian rewrites app.json on a whim — reordering
+# keys without changing meaning — and a timer would turn that into a commit every
+# ten minutes. Excluded here, it still moves when someone commits it deliberately.
+git add -A -- docs ':(exclude)docs/.obsidian'
 
 if git diff --cached --quiet; then
   exit 0

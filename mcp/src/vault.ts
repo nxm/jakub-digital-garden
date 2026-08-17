@@ -16,6 +16,9 @@ export function dayNotePath(date: string): string {
   return join(vaultRoot, "private", "log", `${assertDate(date)}.md`);
 }
 
+// Sections are created on first use rather than stubbed out up front, so a day
+// with only meals does not carry an empty "## Thoughts". It also lets the Garmin
+// enricher create a note from frontmatter alone without duplicating this shape.
 function emptyNote(date: string): string {
   return [
     "---",
@@ -29,7 +32,6 @@ function emptyNote(date: string): string {
     "",
     "Related: [[Diet]], [[Training]]",
     "",
-    ...SECTIONS.flatMap((section) => [`## ${section}`, ""]),
   ].join("\n");
 }
 
@@ -42,10 +44,24 @@ export async function readDayNote(date: string): Promise<string | undefined> {
   }
 }
 
+/** Index of the section's heading, creating it in canonical order when absent. */
+function ensureSection(lines: string[], section: Section): number {
+  const existing = lines.findIndex((line) => line.trim() === `## ${section}`);
+  if (existing !== -1) return existing;
+
+  // Slot the new heading before the first section that outranks it, so the note
+  // keeps Meals / Drinks / Thoughts order however they happen to be created.
+  const following = SECTIONS.slice(SECTIONS.indexOf(section) + 1);
+  const successor = lines.findIndex((line) => following.some((later) => line.trim() === `## ${later}`));
+  const at = successor === -1 ? lines.length : successor;
+
+  lines.splice(at, 0, `## ${section}`, "");
+  return at;
+}
+
 function insertIntoSection(note: string, section: Section, entry: string): string {
   const lines = note.split("\n");
-  const headingIndex = lines.findIndex((line) => line.trim() === `## ${section}`);
-  if (headingIndex === -1) throw new Error(`Day note has no "## ${section}" section`);
+  const headingIndex = ensureSection(lines, section);
 
   let sectionEnd = lines.length;
   for (let index = headingIndex + 1; index < lines.length; index++) {

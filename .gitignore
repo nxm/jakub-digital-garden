@@ -49,3 +49,9 @@ docs/.obsidian/plugins/**/data.json
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# --- Python -----------------------------------------------------
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/

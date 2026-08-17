@@ -14,7 +14,7 @@ import sys
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -35,6 +35,8 @@ CHUNK_DAYS = 28
 SETTLE_DAYS = 10
 
 MANAGED_KEYS = (
+    "sleep_start",
+    "sleep_end",
     "sleep_hours",
     "body_battery_morning",
     "body_battery_min",
@@ -53,6 +55,8 @@ MANAGED_KEYS = (
 class DayMetrics:
     """Metrics for one log day. Absent values stay None and are not written."""
 
+    sleep_start: str | None = None
+    sleep_end: str | None = None
     sleep_hours: float | None = None
     body_battery_morning: int | None = None
     body_battery_min: int | None = None
@@ -65,6 +69,10 @@ class DayMetrics:
 
     def as_frontmatter(self) -> dict[str, str]:
         values = {
+            # Quoted: YAML 1.1 reads a bare 22:33 as a base-60 integer, and
+            # Obsidian would show 1353 where the bedtime should be.
+            "sleep_start": f'"{self.sleep_start}"' if self.sleep_start else None,
+            "sleep_end": f'"{self.sleep_end}"' if self.sleep_end else None,
             "sleep_hours": self.sleep_hours,
             "body_battery_morning": self.body_battery_morning,
             "body_battery_min": self.body_battery_min,
@@ -208,6 +216,19 @@ def body_battery_levels(row: Any) -> list[int]:
     return levels
 
 
+def wall_clock(millis: Any) -> str | None:
+    """HH:MM from Garmin's `local...InMillis` fields.
+
+    Despite looking like an epoch, these are already shifted to the wearer's
+    local time, so they are read as UTC. Interpreting them in Europe/Warsaw
+    instead pushes every bedtime two hours later — 22:33 becomes 00:33, which is
+    wrong but plausible enough to go unnoticed.
+    """
+    if not isinstance(millis, (int, float)) or isinstance(millis, bool):
+        return None
+    return datetime.fromtimestamp(millis / 1000, UTC).strftime("%H:%M")
+
+
 def collect(
     client: Any,
     days: Sequence[date],
@@ -266,6 +287,13 @@ def collect(
             )
             if seconds is not None:
                 entry.sleep_hours = round(seconds / 3600, 1)
+
+            entry.sleep_start = wall_clock(
+                pick(sleep.get(day), "localSleepStartTimeInMillis")
+            )
+            entry.sleep_end = wall_clock(
+                pick(sleep.get(day), "localSleepEndTimeInMillis")
+            )
 
             # The range endpoint sometimes carries only the daily summary, so the
             # timeseries is optional and charged/drained are recorded either way.

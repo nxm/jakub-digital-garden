@@ -56,6 +56,8 @@ here touches it.
 ## Fields written
 
 ```yaml
+sleep_start: "22:33"
+sleep_end: "06:00"
 sleep_hours: 7.4
 body_battery_morning: 82
 body_battery_min: 24
@@ -64,6 +66,13 @@ resting_hr: 48
 steps: 11240
 hrv_last_night: 78
 ```
+
+Bed and wake times are quoted on purpose: YAML 1.1 reads a bare `22:33` as a
+base-60 integer, so an unquoted bedtime shows up in Obsidian as `1353`.
+
+They come from Garmin's `local...InMillis` fields, which despite the name are
+already shifted to local time — reading them as an epoch in Europe/Warsaw would
+put every bedtime two hours late, wrong but plausible enough to miss.
 
 Sleep is attributed to the **morning you woke up**, not the evening you fell
 asleep — Garmin's day runs midnight to midnight while the vault's log day rolls

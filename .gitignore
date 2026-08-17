@@ -44,6 +44,12 @@ docs/.obsidian/cache
 docs/.obsidian/.obsidian-trash/
 docs/.obsidian/plugins/**/data.json
 
+# Obsidian's own trash sits at the vault root, not under .obsidian/. Switching
+# the delete setting to "Move to Obsidian trash" would otherwise hand every
+# deleted note to the publisher, which commits to a public repository — the one
+# place a note you just deleted must never end up.
+docs/.trash/
+
 # --- Logs --------------------------------------------------------
 *.log
 npm-debug.log*

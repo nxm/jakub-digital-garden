@@ -32,7 +32,7 @@ So: **~3 gym sessions + 2–3 runs**. Train most days – just not all-out every
 
 ## Gym – strength
 
-Push/Pull/Legs split at the gym – full exercise lists in [[routine-ppl]]. Progress by heavier load or a harder variation, not just more reps.
+Push/Pull/Legs split at the gym. Progress by heavier load or a harder variation, not just more reps.
 
 - **Push** – chest, shoulders, triceps.
 - **Pull** – back, rear delts, biceps, plus deadlifts and pull-ups.
@@ -65,7 +65,6 @@ Each day gets its own dated note under `Me/Training/` as `session-YYYY-MM-DD.md`
 
 ## Related
 
-- [[routine-ppl]] – the gym split, exercise by exercise.
 - [[Diet]] – food that supports the system.
 - [[principles]] – consistency over intensity.
 - [[now]] – what I'm focused on this season.

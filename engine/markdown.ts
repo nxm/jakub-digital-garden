@@ -266,11 +266,10 @@ function rewriteWikiLinks(
 
     const isEmbed = embed === "!";
     if (isEmbed && IMAGE_EXT_RE.test(target.split("#")[0])) {
-      let assetPath = resolveAssetPath(target, currentFilePath);
-      if (!assetPath && assetMap && !target.includes("/")) {
-        const hit = assetMap.get(target.toLowerCase());
-        if (hit) assetPath = hit;
-      }
+      // Obsidian resolves a bare ![[image.png]] by vault-wide basename lookup, not as a
+      // path relative to the vault root, so the asset map has to win over a literal read.
+      let assetPath = assetMap && !target.includes("/") ? assetMap.get(target.toLowerCase()) : undefined;
+      assetPath ??= resolveAssetPath(target, currentFilePath);
       if (!assetPath) return match;
       const href = buildRelativeAssetHref(currentSlug, assetPath);
       const altText = alias || defaultWikiLabel(target);

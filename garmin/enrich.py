@@ -13,7 +13,7 @@ import os
 import re
 import sys
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -157,15 +157,9 @@ def day_of(payload: Any) -> date | None:
 
 
 def index_by_day(rows: Any) -> dict[date, Any]:
-    # Not every endpoint returns a bare list: HRV wraps its days in an object.
-    # Unwrapping here rather than at the call site keeps a container shape from
-    # looking like an absent metric, which is a far more misleading failure.
-    if isinstance(rows, dict) and day_of(rows) is None:
-        for value in rows.values():
-            if isinstance(value, list):
-                rows = value
-                break
-
+    # Both range endpoints answer with a list of day rows. A bare dict is
+    # tolerated anyway: these endpoints are undocumented, and a single-day
+    # response arriving unwrapped would otherwise read as no data at all.
     if not isinstance(rows, list):
         rows = [rows]
 
@@ -175,6 +169,44 @@ def index_by_day(rows: Any) -> dict[date, Any]:
         if day is not None:
             indexed[day] = row
     return indexed
+
+
+def per_day(
+    fetch: Callable[[str], Any], days: Sequence[date], *evidence: str
+) -> dict[date, Any]:
+    """Walk a span one date at a time, for endpoints with no range form.
+
+    Only steps and Body Battery take a range; sleep and resting heart rate
+    answer per date, so the window is walked. That is a request per day rather
+    than per chunk, which is why nothing else is fetched that the sleep payload
+    already carries.
+
+    A payload carrying none of `evidence` is dropped rather than stored: a night
+    the watch was off the wrist should read as an absent metric, not as a field
+    this script failed to map.
+    """
+    indexed: dict[date, Any] = {}
+    for day in days:
+        payload = fetch(day.isoformat())
+        if payload and (not evidence or pick(payload, *evidence) is not None):
+            indexed[day] = payload
+    return indexed
+
+
+def rhr_row(payload: Any) -> Any:
+    """Flatten the resting-heart-rate response to a plain row.
+
+    The number sits three levels down, under a metric name and a single-element
+    list, which `pick` deliberately does not reach — searching arbitrarily deep
+    would make a wrong match as likely as a right one.
+    """
+    metrics = pick(payload, "metricsMap")
+    rows = (
+        metrics.get("WELLNESS_RESTING_HEART_RATE")
+        if isinstance(metrics, dict)
+        else None
+    )
+    return rows[0] if isinstance(rows, list) and rows else None
 
 
 def level_column(row: Any) -> int:
@@ -239,7 +271,7 @@ def day_title(day: date) -> str:
 
 
 def wall_clock(millis: Any) -> str | None:
-    """HH:MM from Garmin's `local...InMillis` fields.
+    """HH:MM from Garmin's `...TimestampLocal` fields.
 
     Despite looking like an epoch, these are already shifted to the wearer's
     local time, so they are read as UTC. Interpreting them in Europe/Warsaw
@@ -295,27 +327,24 @@ def collect(
         first, last = start.isoformat(), end.isoformat()
         print(f"garmin: fetching {first} … {last}", file=sys.stderr)
 
-        sleep = index_by_day(client.get_sleep_daily(first, last))
-        battery = index_by_day(client.get_body_battery(first, last))
-        rhr = index_by_day(client.get_rhr_daily(first, last))
-        steps = index_by_day(client.get_daily_steps(first, last))
-        hrv = index_by_day(client.get_hrv_data_range(first, last))
+        window = [d for d in days if start <= d <= end]
 
-        for day in (d for d in days if start <= d <= end):
+        sleep = per_day(client.get_sleep_data, window, "sleepTimeSeconds")
+        rhr = per_day(lambda d: rhr_row(client.get_rhr_day(d)), window, "value")
+        battery = index_by_day(client.get_body_battery(first, last))
+        steps = index_by_day(client.get_daily_steps(first, last))
+
+        for day in window:
             entry = metrics[day]
 
-            seconds = number(
-                [sleep], day, "sleep", "totalSleepTimeInSeconds", "sleepTimeSeconds"
-            )
+            seconds = number([sleep], day, "sleep", "sleepTimeSeconds")
             if seconds is not None:
                 entry.sleep_hours = round(seconds / 3600, 1)
 
             entry.sleep_start = wall_clock(
-                pick(sleep.get(day), "localSleepStartTimeInMillis")
+                pick(sleep.get(day), "sleepStartTimestampLocal")
             )
-            entry.sleep_end = wall_clock(
-                pick(sleep.get(day), "localSleepEndTimeInMillis")
-            )
+            entry.sleep_end = wall_clock(pick(sleep.get(day), "sleepEndTimestampLocal"))
 
             # The range endpoint sometimes carries only the daily summary, so the
             # timeseries is optional and charged/drained are recorded either way.
@@ -335,24 +364,23 @@ def collect(
             if drained is not None:
                 entry.body_battery_drained = abs(int(drained))
 
+            # Resting heart rate covers the whole day, so it keeps its own
+            # endpoint: a night the watch was off still has one, and falling
+            # back to sleep alone would lose it.
             resting = number(
-                [rhr, sleep],
-                day,
-                "resting_hr",
-                "value",
-                "restingHR",
-                "restingHeartRate",
+                [rhr, sleep], day, "resting_hr", "value", "restingHeartRate"
             )
             if resting is not None:
                 entry.resting_hr = int(resting)
 
-            walked = number([steps], day, "steps", "totalSteps", "steps")
+            walked = number([steps], day, "steps", "totalSteps")
             if walked is not None:
                 entry.steps = int(walked)
 
-            overnight = number(
-                [hrv], day, "hrv", "lastNightAvg", "lastNight5MinHigh", "weeklyAvg"
-            )
+            # Overnight HRV comes off the sleep payload rather than the HRV
+            # endpoint. Both report the same average, and Garmin only measures
+            # it during sleep, so a separate request per day buys nothing.
+            overnight = number([sleep], day, "hrv", "avgOvernightHrv")
             if overnight is not None:
                 entry.hrv_last_night = int(overnight)
 

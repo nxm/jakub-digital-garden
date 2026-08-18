@@ -7,7 +7,7 @@ tags:
   - training
 ---
 
-This note keeps my training simple and sustainable. The goal is strength, general fitness, conditioning, and – above all – **consistency**. Two pillars: **running** for conditioning and the **gym** for strength, on a Push/Pull/Legs split. Not bodybuilding-style grinding – a system I can actually keep.
+This note keeps my training simple and sustainable. The goal is strength, general fitness, conditioning, and – above all – **consistency**. Two pillars: **running** for conditioning and the **gym** for strength, alternating Push and Pull. Not bodybuilding-style grinding – a system I can actually keep.
 
 ## Goal
 
@@ -18,21 +18,18 @@ This note keeps my training simple and sustainable. The goal is strength, genera
 
 ## Weekly structure
 
-| Day | Training |
-| --- | --- |
-| Monday | Gym – Push |
-| Tuesday | Run |
-| Wednesday | Gym – Pull |
-| Thursday | Run / mobility |
-| Friday | Gym – Legs |
-| Saturday | Long run |
-| Sunday | Rest |
+No fixed days. The week has a target, not a timetable:
 
-So: **~3 gym sessions + 2–3 runs**. Train most days – just not all-out every time.
+- **2 × gym** – Push and Pull, alternating.
+- **The rest of the week** – running, or sauna.
+
+That is the whole rule. Which day the gym lands on is whatever the week allows – a plan that names Monday mostly creates a Monday to fail, and then a reason to write the week off.
+
+Two sessions is also why Legs is not its own day: at this volume the slots go to Push and Pull, and deadlifts inside Pull carry the posterior chain.
 
 ## Gym – strength
 
-Push/Pull/Legs split at the gym. Progress by heavier load or a harder variation, not just more reps.
+Push and Pull, alternating. Progress by heavier load or a harder variation, not just more reps.
 
 The numbers below are **sets**. Reps are whatever the load allows that day, which is the point – the set count is the commitment, the weight is the variable.
 
@@ -63,10 +60,6 @@ The numbers below are **sets**. Reps are whatever the load allows that day, whic
 
 Pull-ups are off the list for now – back on it once the row numbers carry them.
 
-### Legs – quads, hamstrings, glutes, calves
-
-Not written down yet.
-
 **Core** – a short block added to any day.
 
 Home fallback when I can't get to the gym: bodyweight + bands (push-ups, squats, hip thrust, rows, plank).
@@ -78,6 +71,10 @@ The cardio engine, kept mostly easy:
 - **Easy runs** – conversational pace, most of the volume.
 - **Long run** – one longer, steady effort a week.
 - Add intensity sparingly; consistency beats hard days I can't recover from.
+
+## Sauna
+
+The other way to fill a non-gym day. It is not training and does not pretend to be – it is recovery I will actually turn up for, which makes it worth more than a mobility session I keep skipping.
 
 ## Light days
 

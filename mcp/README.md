@@ -110,18 +110,6 @@ would always be chosen generously.
 `training_minutes` is absent until something is logged, and `0` means a recorded
 rest day. Those are different facts and the frontmatter keeps them apart.
 
-## Where it writes
-
-`docs/private/log/YYYY-MM-DD.md`, with `publish: false` in the frontmatter.
-
-Two independent guards keep this off the public web:
-
-1. `engine/build.ts` never walks `docs/private/`, and honours `publish: false`.
-2. `docs/private/` is gitignored — **this repository is public**, so a
-   committed log would be readable by anyone even though the site excludes it.
-
-The logs live in Obsidian Sync and on the server, never in git.
-
 ## Running
 
 ```shell

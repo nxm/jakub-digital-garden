@@ -35,22 +35,31 @@ CHUNK_DAYS = 28
 # never recorded a metric stops being retried.
 SETTLE_DAYS = 10
 
-MANAGED_KEYS = (
-    "sleep_start",
-    "sleep_end",
-    "sleep_hours",
+# Metrics off the endpoints that take a date range: one request covers the whole
+# window, so these are cheap enough to refresh every few minutes.
+RANGE_KEYS = (
     "body_battery_morning",
     "body_battery_min",
     "body_battery_max",
     "body_battery_charged",
     "body_battery_drained",
-    "resting_hr",
     "steps",
-    "hrv_last_night",
     "activity_minutes",
-    "_garmin_synced",
-    "_garmin_final",
 )
+
+# Metrics that cost a request per day, because garminconnect exposes no range
+# form for them. They also only change once a night, so a --fast run skips them.
+DAILY_KEYS = (
+    "sleep_start",
+    "sleep_end",
+    "sleep_hours",
+    "resting_hr",
+    "hrv_last_night",
+)
+
+BOOKKEEPING_KEYS = ("_garmin_synced", "_garmin_final")
+
+MANAGED_KEYS = RANGE_KEYS + DAILY_KEYS + BOOKKEEPING_KEYS
 
 
 @dataclass
@@ -293,6 +302,8 @@ def wall_clock(millis: Any) -> str | None:
 def collect(
     client: Any,
     days: Sequence[date],
+    *,
+    fast: bool = False,
 ) -> tuple[dict[date, DayMetrics], list[UnmappedField], dict[date, set[str]]]:
     metrics: dict[date, DayMetrics] = {day: DayMetrics() for day in days}
     unmapped: list[UnmappedField] = []
@@ -336,22 +347,34 @@ def collect(
 
         window = [d for d in days if start <= d <= end]
 
-        sleep = per_day(client.get_sleep_data, window, "sleepTimeSeconds")
-        rhr = per_day(lambda d: rhr_row(client.get_rhr_day(d)), window, "value")
+        # A fast run touches only the range endpoints: one request each, however
+        # wide the window. The per-day ones are what make a run expensive, and
+        # what they measure changes once a night rather than through the day.
+        sleep = (
+            {} if fast else per_day(client.get_sleep_data, window, "sleepTimeSeconds")
+        )
+        rhr = (
+            {}
+            if fast
+            else per_day(lambda d: rhr_row(client.get_rhr_day(d)), window, "value")
+        )
         battery = index_by_day(client.get_body_battery(first, last))
         steps = index_by_day(client.get_daily_steps(first, last))
 
         for day in window:
             entry = metrics[day]
 
-            seconds = number([sleep], day, "sleep", "sleepTimeSeconds")
-            if seconds is not None:
-                entry.sleep_hours = round(seconds / 3600, 1)
+            if not fast:
+                seconds = number([sleep], day, "sleep", "sleepTimeSeconds")
+                if seconds is not None:
+                    entry.sleep_hours = round(seconds / 3600, 1)
 
-            entry.sleep_start = wall_clock(
-                pick(sleep.get(day), "sleepStartTimestampLocal")
-            )
-            entry.sleep_end = wall_clock(pick(sleep.get(day), "sleepEndTimestampLocal"))
+                entry.sleep_start = wall_clock(
+                    pick(sleep.get(day), "sleepStartTimestampLocal")
+                )
+                entry.sleep_end = wall_clock(
+                    pick(sleep.get(day), "sleepEndTimestampLocal")
+                )
 
             # The range endpoint sometimes carries only the daily summary, so the
             # timeseries is optional and charged/drained are recorded either way.
@@ -371,25 +394,26 @@ def collect(
             if drained is not None:
                 entry.body_battery_drained = abs(int(drained))
 
-            # Resting heart rate covers the whole day, so it keeps its own
-            # endpoint: a night the watch was off still has one, and falling
-            # back to sleep alone would lose it.
-            resting = number(
-                [rhr, sleep], day, "resting_hr", "value", "restingHeartRate"
-            )
-            if resting is not None:
-                entry.resting_hr = int(resting)
-
             walked = number([steps], day, "steps", "totalSteps")
             if walked is not None:
                 entry.steps = int(walked)
 
-            # Overnight HRV comes off the sleep payload rather than the HRV
-            # endpoint. Both report the same average, and Garmin only measures
-            # it during sleep, so a separate request per day buys nothing.
-            overnight = number([sleep], day, "hrv", "avgOvernightHrv")
-            if overnight is not None:
-                entry.hrv_last_night = int(overnight)
+            if not fast:
+                # Resting heart rate covers the whole day, so it keeps its own
+                # endpoint: a night the watch was off still has one, and falling
+                # back to sleep alone would lose it.
+                resting = number(
+                    [rhr, sleep], day, "resting_hr", "value", "restingHeartRate"
+                )
+                if resting is not None:
+                    entry.resting_hr = int(resting)
+
+                # Overnight HRV comes off the sleep payload rather than the HRV
+                # endpoint. Both report the same average, and Garmin only measures
+                # it during sleep, so a separate request per day buys nothing.
+                overnight = number([sleep], day, "hrv", "avgOvernightHrv")
+                if overnight is not None:
+                    entry.hrv_last_night = int(overnight)
 
     return metrics, unmapped, absent
 
@@ -606,11 +630,11 @@ def split_frontmatter(note: str) -> tuple[list[str], str]:
     return note[4:closing].split("\n"), note[closing + 5 :]
 
 
-def is_managed(line: str) -> bool:
-    """True for a top-level key this script owns; indented list items are not."""
+def is_managed(line: str, managed: Sequence[str] = MANAGED_KEYS) -> bool:
+    """True for a top-level key this run owns; indented list items are not."""
     if not line or line.startswith((" ", "-", "\t")):
         return False
-    return line.split(":", 1)[0] in MANAGED_KEYS
+    return line.split(":", 1)[0] in managed
 
 
 def set_title(note: str, day: date) -> str:
@@ -622,9 +646,17 @@ def set_title(note: str, day: date) -> str:
     return re.sub(r"^title: .*$", f"title: {day_title(day)}", note, count=1, flags=re.M)
 
 
-def apply_frontmatter(note: str, updates: dict[str, str]) -> str:
+def apply_frontmatter(
+    note: str, updates: dict[str, str], managed: Sequence[str] = MANAGED_KEYS
+) -> str:
+    """Replace the keys this run owns, leaving every other line where it was.
+
+    `managed` is narrowed on a fast run: those keys are stripped and rewritten
+    from what was just fetched, so listing a key the run never asked about would
+    quietly delete last night's sleep from the note.
+    """
     lines, body = split_frontmatter(note)
-    kept = [line for line in lines if not is_managed(line)]
+    kept = [line for line in lines if not is_managed(line, managed)]
     kept.extend(f"{key}: {value}" for key, value in updates.items())
     return "---\n" + "\n".join(kept) + "\n---\n" + body
 
@@ -669,6 +701,7 @@ def write_day(
     complete: bool,
     force: bool,
     dry_run: bool,
+    fast: bool = False,
 ) -> str:
     path = note_path(vault, day)
     note = existing_note(path)
@@ -678,20 +711,44 @@ def write_day(
     if metrics.is_empty():
         return "no data"
 
-    settled = is_settled(day, complete=complete)
     updates = metrics.as_frontmatter()
-    updates["_garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
-    updates["_garmin_final"] = "true" if settled else "false"
+
+    # A fast run has not seen the whole day, so it never gets to call one final:
+    # that flag stops every later run from looking, and it would freeze the note
+    # without a single sleep figure in it.
+    #
+    # It leaves `_garmin_synced` alone too, and not to save a line. That value
+    # changes on every run, which would make the unchanged-check below always
+    # false and turn a five-minute timer into five-minute empty commits.
+    if fast:
+        managed: Sequence[str] = RANGE_KEYS
+    else:
+        managed = MANAGED_KEYS
+        updates["_garmin_synced"] = datetime.now(TIMEZONE).isoformat(timespec="minutes")
+        updates["_garmin_final"] = (
+            "true" if is_settled(day, complete=complete) else "false"
+        )
 
     updated = set_title(
-        apply_frontmatter(note if note is not None else empty_note(day), updates), day
+        apply_frontmatter(
+            note if note is not None else empty_note(day), updates, managed
+        ),
+        day,
     )
+
+    # Unchanged notes are left alone rather than rewritten with identical
+    # content: the vault is committed on a one-minute timer, and a fast run
+    # every few minutes would otherwise fill the history with empty commits.
+    if updated == note:
+        return "unchanged"
+
+    written = len(updates) - (0 if fast else 2)
     if dry_run:
-        return f"would write {len(updates) - 2} metrics"
+        return f"would write {written} metrics"
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(updated, encoding="utf8")
-    return f"wrote {len(updates) - 2} metrics" + ("" if note else " (new note)")
+    return f"wrote {written} metrics" + ("" if note else " (new note)")
 
 
 def resolve_days(args: argparse.Namespace) -> list[date]:
@@ -766,6 +823,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--dry-run", action="store_true", help="Report without writing")
     parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Only the range endpoints and activities: one request each, however "
+        "wide the window. Skips sleep, resting heart rate and HRV, which cost a "
+        "request per day and change once a night. Made for a frequent timer.",
+    )
+    parser.add_argument(
         "--login",
         action="store_true",
         help="Log in with credentials and cache the session; prompts for the MFA code",
@@ -779,7 +843,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"garmin: {len(days)} day(s), vault {vault}", file=sys.stderr)
 
     client = connect(login=args.login)
-    metrics, unmapped, absent = collect(client, days)
+    metrics, unmapped, absent = collect(client, days, fast=args.fast)
     activities = collect_activities(client, days)
 
     for day in days:
@@ -796,6 +860,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             complete=not absent[day],
             force=args.force,
             dry_run=args.dry_run,
+            fast=args.fast,
         )
 
         # Written whatever the day note decided: a day already marked final can

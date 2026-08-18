@@ -47,6 +47,7 @@ MANAGED_KEYS = (
     "resting_hr",
     "steps",
     "hrv_last_night",
+    "activity_minutes",
     "_garmin_synced",
     "_garmin_final",
 )
@@ -68,6 +69,11 @@ class DayMetrics:
     steps: int | None = None
     hrv_last_night: int | None = None
 
+    # Deliberately not `training_minutes`, which the MCP server owns. The watch
+    # cannot see a gym session done without it, and the bot cannot see a run, so
+    # merging the two into one number would either double-count or overwrite.
+    activity_minutes: int | None = None
+
     def as_frontmatter(self) -> dict[str, str]:
         values = {
             # Quoted: YAML 1.1 reads a bare 22:33 as a base-60 integer, and
@@ -83,6 +89,7 @@ class DayMetrics:
             "resting_hr": self.resting_hr,
             "steps": self.steps,
             "hrv_last_night": self.hrv_last_night,
+            "activity_minutes": self.activity_minutes,
         }
         return {key: str(value) for key, value in values.items() if value is not None}
 
@@ -387,8 +394,193 @@ def collect(
     return metrics, unmapped, absent
 
 
+@dataclass
+class Activity:
+    """One recorded workout, as the watch saw it."""
+
+    sport: str
+    seconds: float | None = None
+    metres: float | None = None
+    average_hr: int | None = None
+    calories: int | None = None
+    personal_record: bool = False
+
+
+def whole(value: Any) -> int | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    return round(value)
+
+
+def as_activity(row: Any) -> Activity:
+    kind = pick(row, "typeKey") or "activity"
+    return Activity(
+        sport=str(kind).replace("_", " ").title(),
+        seconds=row.get("duration"),
+        metres=row.get("distance"),
+        average_hr=whole(row.get("averageHR")),
+        calories=whole(row.get("calories")),
+        personal_record=bool(row.get("isPR")),
+    )
+
+
+def collect_activities(client: Any, days: Sequence[date]) -> dict[date, list[Activity]]:
+    """Recorded workouts per day.
+
+    Kept apart from `collect`: the daily metrics describe a body, these describe
+    what was done to it, and only the second belongs in a training log.
+    """
+    by_day: dict[date, list[Activity]] = {day: [] for day in days}
+
+    for start, end in chunked(days):
+        rows = client.get_activities_by_date(start.isoformat(), end.isoformat()) or []
+        for row in rows:
+            # The local start is what decides the day: a run at 23:40 belongs to
+            # the evening it happened in, not to the UTC date it may fall under.
+            stamp = row.get("startTimeLocal")
+            if not isinstance(stamp, str):
+                continue
+            try:
+                day = date.fromisoformat(stamp[:10])
+            except ValueError:
+                continue
+            if day in by_day:
+                by_day[day].append(as_activity(row))
+
+    return by_day
+
+
+def clock(seconds: float | None) -> str | None:
+    """`28:52`, or `1:02:15` once it runs past the hour."""
+    if seconds is None:
+        return None
+
+    total = round(seconds)
+    hours, rest = divmod(total, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def pace(activity: Activity) -> str | None:
+    """Minutes per kilometre, for anything that covered ground."""
+    if not activity.seconds or not activity.metres:
+        return None
+
+    per_km = activity.seconds / (activity.metres / 1000)
+    minutes, secs = divmod(round(per_km), 60)
+    return f"{minutes}:{secs:02d} /km"
+
+
+def activity_table(activities: Sequence[Activity]) -> str:
+    """The day's workouts, dropping columns none of them filled in.
+
+    A strength session records no distance and no pace. Carrying those columns
+    anyway would read as data that went missing rather than as a different kind
+    of session.
+    """
+    columns: list[tuple[str, Callable[[Activity], str | None]]] = [
+        ("activity", lambda a: a.sport + (" · PR" if a.personal_record else "")),
+        ("duration", lambda a: clock(a.seconds)),
+        ("distance", lambda a: f"{a.metres / 1000:.2f} km" if a.metres else None),
+        ("pace", pace),
+        ("avg HR", lambda a: f"{a.average_hr} bpm" if a.average_hr else None),
+        ("kcal", lambda a: str(a.calories) if a.calories else None),
+    ]
+    used = [
+        (label, cell)
+        for label, cell in columns
+        if any(cell(activity) is not None for activity in activities)
+    ]
+
+    return "\n".join(
+        [
+            "| " + " | ".join(label for label, _ in used) + " |",
+            "| " + " | ".join("---" for _ in used) + " |",
+            *(
+                "| " + " | ".join(cell(activity) or "—" for _, cell in used) + " |"
+                for activity in activities
+            ),
+        ]
+    )
+
+
 def note_path(vault: Path, day: date) -> Path:
     return vault / "Daily" / f"{day.isoformat()}.md"
+
+
+def session_path(vault: Path, day: date) -> Path:
+    return vault / "Me" / "Training" / f"session-{day.isoformat()}.md"
+
+
+def empty_session_note(day: date, title: str) -> str:
+    return (
+        "---\n"
+        f"title: {day.isoformat()} – {title}\n"
+        f"date: {day.isoformat()}\n"
+        "tags:\n"
+        "  - training\n"
+        "---\n"
+        "\n"
+        "Related: [[Training]]\n"
+    )
+
+
+def replace_section(note: str, section: str, body: str) -> str:
+    """Replace one `## section` block, appending it when the note has none.
+
+    Everything outside the block is left alone. These notes also hold whatever
+    was written by hand afterwards, and a re-run should not cost someone the
+    paragraph they wrote about how the session felt.
+    """
+    lines = note.split("\n")
+    heading = f"## {section}"
+
+    if heading in lines:
+        start = lines.index(heading)
+        end = next(
+            (
+                index
+                for index in range(start + 1, len(lines))
+                if lines[index].startswith("## ")
+            ),
+            len(lines),
+        )
+        lines[start + 1 : end] = ["", *body.split("\n"), ""]
+    else:
+        while lines and not lines[-1].strip():
+            lines.pop()
+        lines.extend(["", heading, "", *body.split("\n")])
+
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def write_session(
+    vault: Path, day: date, activities: Sequence[Activity], *, dry_run: bool
+) -> bool:
+    """Write the day's workouts into its session note. True when it changed.
+
+    Unchanged notes are left untouched rather than rewritten with identical
+    content: the vault is synced and committed on a timer, so a pointless write
+    turns into a pointless commit.
+    """
+    if not activities:
+        return False
+
+    path = session_path(vault, day)
+    title = ", ".join(dict.fromkeys(activity.sport for activity in activities))
+    existing = existing_note(path)
+    updated = replace_section(
+        existing if existing is not None else empty_session_note(day, title),
+        "Activities",
+        activity_table(activities),
+    )
+
+    if updated == existing:
+        return False
+    if not dry_run:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(updated, encoding="utf8")
+    return True
 
 
 def empty_note(day: date) -> str:
@@ -586,9 +778,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     days = resolve_days(args)
     print(f"garmin: {len(days)} day(s), vault {vault}", file=sys.stderr)
 
-    metrics, unmapped, absent = collect(connect(login=args.login), days)
+    client = connect(login=args.login)
+    metrics, unmapped, absent = collect(client, days)
+    activities = collect_activities(client, days)
 
     for day in days:
+        recorded = activities[day]
+        if recorded:
+            metrics[day].activity_minutes = round(
+                sum(activity.seconds or 0 for activity in recorded) / 60
+            )
+
         outcome = write_day(
             vault,
             day,
@@ -597,6 +797,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             force=args.force,
             dry_run=args.dry_run,
         )
+
+        # Written whatever the day note decided: a day already marked final can
+        # still gain a workout, since Garmin only sees an activity once the
+        # watch has synced, which may be long after the day itself ended.
+        if write_session(vault, day, recorded, dry_run=args.dry_run):
+            verb = "would write" if args.dry_run else "wrote"
+            count = f"{len(recorded)} activit" + ("y" if len(recorded) == 1 else "ies")
+            outcome += f", {verb} {count} to session-{day}"
+
         print(f"  {day}  {outcome}")
 
     missing: Counter[str] = Counter(

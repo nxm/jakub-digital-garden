@@ -29,7 +29,7 @@ it belongs to. Tools take an optional `date` only for backfilling.
 | tool | purpose |
 | --- | --- |
 | `log_meal` | Record a meal or drink. Pass items with portions, calories and macros; the server sums them, and attaches a photo by itself if one was just sent. Set `contains_fish` — Jakub is allergic. |
-| `log_training` | Record the day's training, or that there was none. Replaces rather than appends. |
+| `log_training` | Record the day's training, or that there was none, with the lifts as sets/reps/weight. Replaces rather than appends. |
 | `log_thought` | Append a thought in the user's own words. |
 | `get_day` | Read a day back, including the running calorie total. |
 
@@ -39,7 +39,8 @@ it belongs to. Tools take an optional `date` only for backfilling.
 | --- | --- | --- |
 | meals, drinks, calories | `docs/Daily/YYYY-MM-DD.md` | yes |
 | health metrics (Garmin) | same note's frontmatter | yes |
-| training | `docs/Me/Training/session-*.md`, linked from the day | yes |
+| training minutes | `docs/Daily/YYYY-MM-DD.md` | yes |
+| exercises, sets, weights | `docs/Me/Training/session-*.md`, linked from the day | yes |
 | thoughts | `docs/private/thoughts/YYYY-MM-DD.md` | **no** |
 
 The day note is the hub. Meals accumulate, so `log_meal` appends. A day has one
@@ -106,13 +107,34 @@ it, which is two independent guards rather than a flag that could be flipped.
 Links therefore run from private notes out to public ones, never the reverse: a
 public note pointing at a private one renders as a dead link.
 
+## The lifts live in the session note
+
+`log_training` writes minutes and a summary to the day, and the exercises to
+`Me/Training/session-YYYY-MM-DD.md`. The day note then links to it.
+
+Neither side names that file. The path comes from the date, so the link and the
+note cannot drift apart — and there is no argument for the model to get wrong,
+which is the same reason `log_meal` no longer asks about photos.
+
+Only the `Exercises` section is replaced. These notes also carry what Garmin
+recorded and whatever was written by hand afterwards, and re-logging a set
+should not cost someone the paragraph they wrote about how the session felt.
+
+The table drops columns nobody filled in: a run has no weights and a circuit no
+single rep count, and empty columns would read as data that went missing rather
+than as a different kind of session.
+
+The link is added whenever the session note exists, however it was written. Some
+were filled in by hand from what the watch recorded, and those deserve it just
+as much.
+
 ## No verdict on rest days
 
 `log_training` takes minutes and, optionally, a real reason — illness, travel.
 It does not record whether a rest was planned or a session was skipped. The
-weekly plan in `Me/Training.md` already says what each day was for, and comparing
-it against what happened is more honest than a label chosen in hindsight, which
-would always be chosen generously.
+weekly target in `Me/Training.md` already says what the week was for, and
+comparing it against what happened is more honest than a label chosen in
+hindsight, which would always be chosen generously.
 
 `training_minutes` is absent until something is logged, and `0` means a recorded
 rest day. Those are different facts and the frontmatter keeps them apart.

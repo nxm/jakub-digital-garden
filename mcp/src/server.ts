@@ -10,10 +10,48 @@ import {
   claimAttachment,
   findRecentAttachment,
   readDayNote,
+  recordSession,
   recordTraining,
   saveMealPhoto,
+  sessionExists,
   totals,
 } from "./vault.js";
+
+type Exercise = {
+  name: string;
+  sets: number;
+  reps?: number | undefined;
+  weight_kg?: number | undefined;
+  note?: string | undefined;
+};
+
+/** Renders the lifts as a table, dropping columns nobody filled in.
+ *
+ * A run carries no weights and a circuit has no single rep count. Keeping empty
+ * columns for them would read as data that went missing rather than as a
+ * different kind of session.
+ */
+function exerciseTable(exercises: Exercise[]): string {
+  const used = (key: "reps" | "weight_kg" | "note"): boolean =>
+    exercises.some((exercise) => exercise[key] !== undefined);
+
+  const columns: Array<[string, (exercise: Exercise) => string]> = [
+    ["exercise", (exercise) => exercise.name],
+    ["sets", (exercise) => String(exercise.sets)],
+  ];
+
+  if (used("reps")) columns.push(["reps", (exercise) => exercise.reps?.toString() ?? "—"]);
+  if (used("weight_kg")) {
+    columns.push(["weight", (exercise) => (exercise.weight_kg === undefined ? "—" : `${exercise.weight_kg} kg`)]);
+  }
+  if (used("note")) columns.push(["note", (exercise) => exercise.note ?? ""]);
+
+  return [
+    `| ${columns.map(([label]) => label).join(" | ")} |`,
+    `| ${columns.map(() => "---").join(" | ")} |`,
+    ...exercises.map((exercise) => `| ${columns.map(([, cell]) => cell(exercise)).join(" | ")} |`),
+  ].join("\n");
+}
 
 const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
@@ -173,25 +211,44 @@ function buildServer(): McpServer {
     {
       description:
         "Record the day's training, or that there was none. Pass minutes: 0 for a rest day. " +
+        "Pass the exercises whenever they were mentioned — sets, reps and weight are the only " +
+        "record of whether the load is going up, and the summary line cannot carry them. " +
         "Do not judge whether a rest was planned or a session was skipped — the weekly plan in " +
-        "Me/Training.md already says what the day was for, and comparing it against what happened " +
+        "Me/Training.md already says what the week was for, and comparing it against what happened " +
         "is more honest than a label chosen after the fact. Give a reason only if there is a real " +
-        "one, like illness or travel; otherwise leave it out. Write the summary and reason in English " +
-        "whatever language the request came in — these notes are published.",
+        "one, like illness or travel; otherwise leave it out. Write every name in English " +
+        'whatever language the request came in — these notes are published. Translate the lifts: ' +
+        '"płaska" is a flat bench press, "skos" an incline press, "brama" a cable crossover, ' +
+        '"martwy" a deadlift.',
       inputSchema: z.object({
         minutes: z
           .number()
           .int()
           .min(0)
           .describe("Total minutes trained across the day. 0 for a rest day."),
+        focus: z
+          .string()
+          .optional()
+          .describe('Which session this was, e.g. "Push", "Pull", "Run", "Sauna".'),
         summary: z
           .string()
           .optional()
           .describe('One line on what was done, e.g. "62 min strength, mostly zones 1–2".'),
-        session: z
-          .string()
+        exercises: z
+          .array(
+            z.object({
+              name: z.string().min(1),
+              sets: z.number().int().positive(),
+              reps: z.number().int().positive().optional(),
+              weight_kg: z.number().nonnegative().optional().describe("Load per side as used, in kg."),
+              note: z.string().optional().describe("Anything worth keeping, e.g. \"last set to failure\"."),
+            }),
+          )
           .optional()
-          .describe('Basename of a session note to link, e.g. "session-2026-08-11".'),
+          .describe(
+            "The lifts as done. Written to the day's session note, which the day then links to — " +
+              "there is no file name to pass, the server derives it from the date.",
+          ),
         reason: z
           .string()
           .optional()
@@ -199,13 +256,18 @@ function buildServer(): McpServer {
         date: dateField,
       }),
     },
-    async ({ minutes, summary, session, reason, date }) => {
+    async ({ minutes, focus, summary, exercises, reason, date }) => {
       const day = date ? assertDate(date) : logDay();
 
+      if (exercises?.length) await recordSession(day, focus, exerciseTable(exercises));
+
+      // Linked whenever the note is there, however it got written: some sessions
+      // are filled in by hand from what the watch recorded, and those deserve the
+      // link just as much as the ones logged here.
       const lines = [
-        ...(minutes > 0 ? [`**${minutes} min**`] : ["Rest day."]),
+        ...(minutes > 0 ? [`**${minutes} min**${focus ? ` — ${focus}` : ""}`] : ["Rest day."]),
         ...(summary ? ["", summary] : []),
-        ...(session ? ["", `Session: [[${session}]]`] : []),
+        ...((await sessionExists(day)) ? ["", `Session: [[session-${day}]]`] : []),
         ...(reason ? ["", reason] : []),
       ];
 
@@ -216,10 +278,10 @@ function buildServer(): McpServer {
           {
             type: "text" as const,
             text:
-              minutes > 0
+              (minutes > 0
                 ? `Logged ${minutes} min of training to ${day}.`
-                : `Recorded ${day} as a rest day.` +
-                  ` Day total still ~${totals(updated).kcal} kcal.`,
+                : `Recorded ${day} as a rest day.` + ` Day total still ~${totals(updated).kcal} kcal.`) +
+              (exercises?.length ? ` ${exercises.length} exercise(s) written to session-${day}.` : ""),
           },
         ],
       };

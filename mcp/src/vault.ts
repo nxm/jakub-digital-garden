@@ -78,14 +78,20 @@ export async function readDayNote(date: string): Promise<string | undefined> {
   }
 }
 
-/** Index of the section's heading, creating it in canonical order when absent. */
-function ensureSection(lines: string[], section: Section): number {
+/** Index of the section's heading, creating it in canonical order when absent.
+ *
+ * A section outside `order` is appended: the session note has no fixed shape,
+ * and guessing a position among headings this file knows nothing about would
+ * scatter someone's own writing.
+ */
+function ensureSection(lines: string[], section: string, order: readonly string[] = SECTIONS): number {
   const existing = lines.findIndex((line) => line.trim() === `## ${section}`);
   if (existing !== -1) return existing;
 
   // Slot the new heading before the first section that outranks it, so the note
-  // keeps Meals / Drinks / Thoughts order however they happen to be created.
-  const following = SECTIONS.slice(SECTIONS.indexOf(section) + 1);
+  // keeps Meals / Drinks / Training order however they happen to be created.
+  const position = order.indexOf(section);
+  const following = position === -1 ? [] : order.slice(position + 1);
   const successor = lines.findIndex((line) => following.some((later) => line.trim() === `## ${later}`));
   const at = successor === -1 ? lines.length : successor;
 
@@ -114,9 +120,9 @@ function insertIntoSection(note: string, section: Section, entry: string): strin
 }
 
 /** Replaces a whole section's body. */
-function replaceSection(note: string, section: Section, body: string): string {
+function replaceSection(note: string, section: string, body: string, order?: readonly string[]): string {
   const lines = note.split("\n");
-  const headingIndex = ensureSection(lines, section);
+  const headingIndex = ensureSection(lines, section, order);
 
   let sectionEnd = lines.length;
   for (let index = headingIndex + 1; index < lines.length; index++) {
@@ -208,6 +214,56 @@ export function recordTraining(date: string, minutes: number, body: string): Pro
   return updateNote(date, (note) =>
     setFrontmatter(replaceSection(note, "Training", body), "training_minutes", String(minutes)),
   );
+}
+
+/** A day's session note, which is where the lifts themselves are written down.
+ *
+ * The name is derived from the date rather than passed in, so the day note can
+ * link to it without anyone naming a file: the link and the note cannot drift
+ * apart if neither side gets a say in what it is called.
+ */
+export function sessionNotePath(date: string): string {
+  return join(vaultRoot, "Me", "Training", `session-${assertDate(date)}.md`);
+}
+
+export async function sessionExists(date: string): Promise<boolean> {
+  return stat(sessionNotePath(date)).then(
+    () => true,
+    () => false,
+  );
+}
+
+function emptySessionNote(date: string, focus: string | undefined): string {
+  return [
+    "---",
+    `title: ${date} – ${focus ?? "Training"}`,
+    `date: ${date}`,
+    "tags:",
+    "  - training",
+    "---",
+    "",
+    "Related: [[Training]]",
+    "",
+  ].join("\n");
+}
+
+/** Writes the day's lifts into its session note, leaving the rest of it alone.
+ *
+ * Only the `Exercises` section is replaced. These notes also carry what Garmin
+ * recorded and whatever was written by hand afterwards, and re-logging a set
+ * should not cost someone the paragraph they wrote about how the session felt.
+ */
+export function recordSession(date: string, focus: string | undefined, body: string): Promise<string> {
+  const path = sessionNotePath(date);
+
+  return withFileLock(path, async () => {
+    const existing = await readFile(path, "utf8").catch(() => emptySessionNote(date, focus));
+    const updated = replaceSection(existing, "Exercises", body, []);
+
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${updated.replace(/\n+$/, "")}\n`, "utf8");
+    return updated;
+  });
 }
 
 export async function readThoughtsNote(date: string): Promise<string | undefined> {

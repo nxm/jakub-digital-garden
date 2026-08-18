@@ -34,10 +34,40 @@ So: **~3 gym sessions + 2–3 runs**. Train most days – just not all-out every
 
 Push/Pull/Legs split at the gym. Progress by heavier load or a harder variation, not just more reps.
 
-- **Push** – chest, shoulders, triceps.
-- **Pull** – back, rear delts, biceps, plus deadlifts and pull-ups.
-- **Legs** – quads, hamstrings, glutes, calves.
-- **Core** – a short block added to any day.
+The numbers below are **sets**. Reps are whatever the load allows that day, which is the point – the set count is the commitment, the weight is the variable.
+
+### Push – chest, shoulders, triceps
+
+| Exercise | Sets |
+| --- | --- |
+| Push-ups (15 reps) | 3 |
+| Flat bench press | 4 |
+| Overhead press | 4 |
+| Incline press | 4 |
+| Cable crossover | 4 |
+| Chest press machine | 3 |
+| Shoulders–triceps–biceps finisher | 3 |
+
+### Pull – back, rear delts, biceps
+
+| Exercise | Sets |
+| --- | --- |
+| TRX row | 3 |
+| Lat pulldown to chest | 4 |
+| Deadlift | 4 |
+| Barbell row | 4 |
+| Straight-arm pulldown | 3 |
+| Behind-the-neck pulldown | 3 |
+| Seated cable row | 4 |
+| Biceps–shoulders–triceps finisher | 3 |
+
+Pull-ups are off the list for now – back on it once the row numbers carry them.
+
+### Legs – quads, hamstrings, glutes, calves
+
+Not written down yet.
+
+**Core** – a short block added to any day.
 
 Home fallback when I can't get to the gym: bodyweight + bands (push-ups, squats, hip thrust, rows, plank).
 

@@ -28,7 +28,7 @@ it belongs to. Tools take an optional `date` only for backfilling.
 
 | tool | purpose |
 | --- | --- |
-| `log_meal` | Record a meal or drink, optionally with a photo. Pass items with portions, calories and macros; the server sums them. Set `contains_fish` — Jakub is allergic. |
+| `log_meal` | Record a meal or drink. Pass items with portions, calories and macros; the server sums them, and attaches a photo by itself if one was just sent. Set `contains_fish` — Jakub is allergic. |
 | `log_training` | Record the day's training, or that there was none. Replaces rather than appends. |
 | `log_thought` | Append a thought in the user's own words. |
 | `get_day` | Read a day back, including the running calorie total. |
@@ -62,17 +62,27 @@ for: `_garmin_synced`, `_garmin_final`.
 
 ## Photos
 
-`log_meal` takes `photo: true` when the user attached one, and the server finds
-the image itself — no filename, no path, nothing for the model to look up or
-mistype.
+`log_meal` has no photo argument at all. The server checks for a recent
+attachment on every call and files it with the entry.
 
 It has to work that way. Moltis strips every argument whose name begins with `_`
 before forwarding a call to a remote MCP server, `_session_key` and
 `_document_files` among them, so nothing identifying the attachment survives the
 trip. What the server can see is the session media directory, so it takes the
-most recently saved file and ignores anything older than fifteen minutes —
+most recently saved image and ignores anything older than fifteen minutes —
 recent enough to survive a retry, tight enough that yesterday's lunch is never
 stapled to today's.
+
+There *was* a `photo: true` flag. It carried no information the server could not
+get for itself, and a weaker model that forgot to set it dropped the photo
+silently — the note simply had none, with nothing to say why. The model is asked
+to describe what is in the picture, which it can only do when a picture is
+there; asking it a second time in boolean form only added a way to fail.
+
+Recency alone would then re-attach the same image to the next meal logged from
+plain text, so a used attachment is recorded in `GARDEN_STATE_DIR` and skipped
+afterwards. That file lives outside the vault: the publisher only ever stages
+`docs`, and bookkeeping has no business in a public repository.
 
 Images are downscaled to 1600px before they land in the vault. This is not
 tidiness — the notes are committed to a public repository and git keeps every

@@ -7,6 +7,7 @@ import { assertDate, assertTime, localTime, logDay } from "./day.js";
 import {
   appendEntry,
   appendThought,
+  claimAttachment,
   findRecentAttachment,
   readDayNote,
   recordTraining,
@@ -50,6 +51,8 @@ function buildServer(): McpServer {
       description:
         "Record something eaten or drunk in today's log. Identify the items and estimate portions from the " +
         "photo or description, then pass them as a list — the server sums the calories itself. " +
+        "If the user attached a photo, the server files it with the entry on its own: there is no " +
+        "argument for it and nothing for you to look up. " +
         "Set contains_fish whenever fish or seafood may be present: the user is allergic. " +
         "Write every label and item name in English no matter what language the user used: the vault is " +
         'written in English and these notes are published. Translate the dish ("jajecznica" becomes ' +
@@ -75,19 +78,11 @@ function buildServer(): McpServer {
           .optional()
           .describe("Anything worth keeping — context, how it felt, doubts about the estimate."),
         contains_fish: z.boolean().default(false),
-        photo: z
-          .boolean()
-          .default(false)
-          .describe(
-            "Set when the user attached a photo of this meal to their message. The server finds " +
-              "the image itself and files it with the entry — do not pass a filename or a path, " +
-              "there is nothing for you to look up.",
-          ),
         date: dateField,
         time: timeField,
       }),
     },
-    async ({ label, kind, items, note, contains_fish, photo, date, time }) => {
+    async ({ label, kind, items, note, contains_fish, date, time }) => {
       const day = date ? assertDate(date) : logDay();
       const stamp = time ? assertTime(time) : localTime();
       const sum = (key: "kcal" | "protein" | "carbs" | "fat"): number =>
@@ -101,19 +96,15 @@ function buildServer(): McpServer {
         .concat(hasMacros ? Object.entries(macros).map(([k, v]) => `${k}=${v}`) : [])
         .join(" ");
 
-      // Resolved before the entry is written: a photo the user believes was
-      // attached but which cannot be found is worth saying out loud, not
-      // silently dropping from a note they will not re-read.
+      // Always checked, never asked about: if an unused image arrived in the
+      // last few minutes it belongs to this entry. The claim is written only
+      // once the copy succeeded, so a failure here leaves it free to retry.
       let embed: string | undefined;
-      let photoWarning: string | undefined;
 
-      if (photo) {
-        const source = await findRecentAttachment();
-        if (source) {
-          embed = `![[${await saveMealPhoto(source, day, stamp)}]]`;
-        } else {
-          photoWarning = " No recent photo was found on the server, so the entry has none.";
-        }
+      const attachment = await findRecentAttachment();
+      if (attachment) {
+        embed = `![[${await saveMealPhoto(attachment.path, day, stamp)}]]`;
+        await claimAttachment(attachment);
       }
 
       const entry = [
@@ -145,7 +136,8 @@ function buildServer(): McpServer {
             type: "text" as const,
             text:
               `Logged "${label}" (~${kcal} kcal) to ${day} at ${stamp}.` +
-              ` Day total: ~${totals(updated).kcal} kcal.${photoWarning ?? ""}`,
+              ` Day total: ~${totals(updated).kcal} kcal.` +
+              (embed ? " Photo attached." : ""),
           },
         ],
       };

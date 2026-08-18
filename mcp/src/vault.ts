@@ -233,29 +233,64 @@ export function appendThought(date: string, entry: string): Promise<string> {
   });
 }
 
-// Where moltis parks channel attachments. Only files sent as a *document* land
-// here — a Telegram "photo" is optimised for the model and never written down.
+// Where moltis parks channel attachments, whether they arrived as a Telegram
+// photo or as a document.
 const mediaRoot = process.env["MOLTIS_MEDIA_ROOT"] ?? "/var/lib/moltis/sessions/media/v1";
+
+// Outside the vault, so the publisher never sees it. It only ever holds which
+// attachment was used last, which is worth nothing to anyone but this process.
+const stateRoot = process.env["GARDEN_STATE_DIR"] ?? join(vaultRoot, "..", ".garden-state");
+const claimPath = join(stateRoot, "claimed-attachment.json");
 
 // How far back an attachment still counts as "the one just sent". Long enough
 // to survive a slow model or a retry, short enough that yesterday's lunch never
 // gets stapled to today's.
 const RECENT_ATTACHMENT_MS = 15 * 60 * 1000;
 
-/** The most recently saved attachment, if one arrived just now.
+// Anything moltis saved that a note could not display is not a meal photo.
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|heic|heif|webp|gif)$/i;
+
+type Attachment = { path: string; mtime: number };
+
+async function readClaim(): Promise<Attachment | undefined> {
+  try {
+    return JSON.parse(await readFile(claimPath, "utf8")) as Attachment;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Marks an attachment as used, so it attaches to exactly one entry.
  *
- * Matching by filename would be more precise but cannot be relied on: moltis
- * strips every argument starting with `_` before forwarding to a remote MCP
- * server, so neither the session key nor the saved filename reaches this
- * process. The model would have to read the name off the screen and retype it,
- * which it does badly. Recency needs nothing from anyone.
+ * Without this the next meal logged from plain text — no photo sent — would pick
+ * up the previous one all over again, since recency alone cannot tell a fresh
+ * photo from one that has already been filed.
  */
-export async function findRecentAttachment(): Promise<string | undefined> {
-  let newest: { path: string; mtime: number } | undefined;
+export async function claimAttachment(attachment: Attachment): Promise<void> {
+  await mkdir(stateRoot, { recursive: true });
+  await writeFile(claimPath, JSON.stringify(attachment), "utf8");
+}
+
+/** The most recently saved attachment, if one arrived just now and is unused.
+ *
+ * The model is never asked whether a photo was attached. It is asked to identify
+ * what is in the picture, which it can only do when one is there, so the flag
+ * carried no information the server could not get for itself — and a weaker
+ * model forgetting to set it silently dropped the photo.
+ *
+ * Matching by filename is not available either: moltis strips every argument
+ * starting with `_` before forwarding to a remote MCP server, so neither the
+ * session key nor the saved filename reaches this process. Recency plus a claim
+ * needs nothing from anyone.
+ */
+export async function findRecentAttachment(): Promise<Attachment | undefined> {
+  let newest: Attachment | undefined;
 
   for (const session of await readdir(mediaRoot).catch(() => [])) {
     const files = join(mediaRoot, session, "files");
     for (const candidate of await readdir(files).catch(() => [])) {
+      if (!IMAGE_EXTENSIONS.test(candidate)) continue;
+
       const path = join(files, candidate);
       const { mtimeMs } = await stat(path).catch(() => ({ mtimeMs: 0 }));
       if (!newest || mtimeMs > newest.mtime) newest = { path, mtime: mtimeMs };
@@ -263,7 +298,11 @@ export async function findRecentAttachment(): Promise<string | undefined> {
   }
 
   if (!newest || Date.now() - newest.mtime > RECENT_ATTACHMENT_MS) return undefined;
-  return newest.path;
+
+  const claimed = await readClaim();
+  if (claimed && claimed.path === newest.path && claimed.mtime === newest.mtime) return undefined;
+
+  return newest;
 }
 
 /** Copies an attachment into the vault, downscaled, and returns its basename.

@@ -1,6 +1,10 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
 import { dirname, join, resolve } from "node:path";
 import { assertDate, dayTitle } from "./day.js";
+
+const execFile = promisify(execFileCb);
 
 // What you ate and what you trained, in that order. Thoughts are deliberately
 // not here: they live in a separate note that never reaches the repository.
@@ -227,4 +231,55 @@ export function appendThought(date: string, entry: string): Promise<string> {
     await writeFile(path, `${updated}\n`, "utf8");
     return updated;
   });
+}
+
+// Where moltis parks channel attachments. Only files sent as a *document* land
+// here — a Telegram "photo" is optimised for the model and never written down.
+const mediaRoot = process.env["MOLTIS_MEDIA_ROOT"] ?? "/var/lib/moltis/sessions/media/v1";
+
+/** Locates an attachment by the filename the user's client showed.
+ *
+ * The stored name carries a channel-side prefix, so the match is on the tail.
+ * The needle is a bare filename by contract — it arrives from a language model,
+ * and a path separator in it would be a directory traversal into someone's
+ * session media.
+ */
+export async function findAttachment(filename: string): Promise<string | undefined> {
+  if (!filename || /[\\/]/.test(filename) || filename.includes("..")) {
+    throw new Error(`Refusing a photo name that is not a bare filename: "${filename}"`);
+  }
+
+  for (const session of await readdir(mediaRoot).catch(() => [])) {
+    const files = join(mediaRoot, session, "files");
+    for (const candidate of await readdir(files).catch(() => [])) {
+      if (candidate === filename || candidate.endsWith(`_${filename}`)) {
+        return join(files, candidate);
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/** Copies an attachment into the vault, downscaled, and returns its basename.
+ *
+ * Downscaling is not tidiness: these notes are committed to a public repository
+ * and git keeps every version forever, so a few megabytes per meal would be
+ * unrecoverable once pushed. A meal photo is documentation, not an archive
+ * master, and 1600px is more than a note ever renders.
+ */
+export async function saveMealPhoto(source: string, date: string, stamp: string): Promise<string> {
+  const name = `meal-${date}-${stamp.replace(":", "")}.jpg`;
+  const target = join(vaultRoot, "media", name);
+
+  await mkdir(dirname(target), { recursive: true });
+
+  try {
+    await execFile("magick", [source, "-auto-orient", "-resize", "1600x1600>", "-quality", "82", target]);
+  } catch {
+    // Without ImageMagick the note is still worth more than the megabytes saved.
+    await copyFile(source, target);
+  }
+
+  return name;
 }

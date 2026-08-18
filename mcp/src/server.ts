@@ -4,7 +4,15 @@ import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { hostHeaderValidation, toNodeHandler } from "@modelcontextprotocol/node";
 import * as z from "zod";
 import { assertDate, assertTime, localTime, logDay } from "./day.js";
-import { appendEntry, appendThought, readDayNote, recordTraining, totals } from "./vault.js";
+import {
+  appendEntry,
+  appendThought,
+  findAttachment,
+  readDayNote,
+  recordTraining,
+  saveMealPhoto,
+  totals,
+} from "./vault.js";
 
 const authToken = process.env["MCP_AUTH_TOKEN"];
 if (!authToken) throw new Error("MCP_AUTH_TOKEN is required — refusing to expose an unauthenticated vault writer");
@@ -67,11 +75,20 @@ function buildServer(): McpServer {
           .optional()
           .describe("Anything worth keeping — context, how it felt, doubts about the estimate."),
         contains_fish: z.boolean().default(false),
+        photo: z
+          .string()
+          .optional()
+          .describe(
+            "Filename of a photo the user attached, exactly as their client showed it — for " +
+              "example \"photo_2026-08-18_07-08-02.jpg\". Only works when the image was sent as a " +
+              "file/document; an image sent as a chat photo is never written to disk and has no " +
+              "filename to give. Omit it rather than inventing one.",
+          ),
         date: dateField,
         time: timeField,
       }),
     },
-    async ({ label, kind, items, note, contains_fish, date, time }) => {
+    async ({ label, kind, items, note, contains_fish, photo, date, time }) => {
       const day = date ? assertDate(date) : logDay();
       const stamp = time ? assertTime(time) : localTime();
       const sum = (key: "kcal" | "protein" | "carbs" | "fat"): number =>
@@ -85,9 +102,25 @@ function buildServer(): McpServer {
         .concat(hasMacros ? Object.entries(macros).map(([k, v]) => `${k}=${v}`) : [])
         .join(" ");
 
+      // Resolved before the entry is written: a photo the user believes was
+      // attached but which cannot be found is worth saying out loud, not
+      // silently dropping from a note they will not re-read.
+      let embed: string | undefined;
+      let photoWarning: string | undefined;
+
+      if (photo) {
+        const source = await findAttachment(photo);
+        if (source) {
+          embed = `![[${await saveMealPhoto(source, day, stamp)}]]`;
+        } else {
+          photoWarning = ` Photo "${photo}" was not found — send it as a file, not a chat photo.`;
+        }
+      }
+
       const entry = [
         `### ${stamp} — ${label}`,
         "",
+        ...(embed ? [embed, ""] : []),
         ...(contains_fish
           ? ["> [!warning] Possible fish or seafood — you are allergic. Check before eating.", ""]
           : []),
@@ -111,7 +144,9 @@ function buildServer(): McpServer {
         content: [
           {
             type: "text" as const,
-            text: `Logged "${label}" (~${kcal} kcal) to ${day} at ${stamp}. Day total: ~${totals(updated).kcal} kcal.`,
+            text:
+              `Logged "${label}" (~${kcal} kcal) to ${day} at ${stamp}.` +
+              ` Day total: ~${totals(updated).kcal} kcal.${photoWarning ?? ""}`,
           },
         ],
       };

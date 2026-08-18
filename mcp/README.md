@@ -28,7 +28,7 @@ it belongs to. Tools take an optional `date` only for backfilling.
 
 | tool | purpose |
 | --- | --- |
-| `log_meal` | Record a meal or drink. Pass items with portions and calories; the server sums them. Set `contains_fish` — Jakub is allergic. |
+| `log_meal` | Record a meal or drink, optionally with a photo. Pass items with portions, calories and macros; the server sums them. Set `contains_fish` — Jakub is allergic. |
 | `log_training` | Record the day's training, or that there was none. Replaces rather than appends. |
 | `log_thought` | Append a thought in the user's own words. |
 | `get_day` | Read a day back, including the running calorie total. |
@@ -59,6 +59,28 @@ becomes public**, which is a decision, not a detail.
 
 Keys prefixed with `_` are skipped. Use that for bookkeeping a reader has no use
 for: `_garmin_synced`, `_garmin_final`.
+
+## Photos
+
+`log_meal` takes a `photo` filename and copies the image into the vault, where
+the note embeds it. Two constraints shape this.
+
+The image must be sent as a **file**, not as a chat photo. Telegram photos are
+downloaded, optimised for the model and never written to disk, so there is
+nothing to copy and no filename to name it by. Files are saved to session media
+with a path the server can find.
+
+The filename has to come from the model, because moltis strips every argument
+whose name starts with `_` before forwarding a call to a remote MCP server —
+including `_session_key`. The server therefore cannot work out which session an
+attachment belongs to and searches all of them by name instead. That name is
+required to be a bare filename: it arrives from a language model, and a path
+separator in it would be a traversal into someone else's session media.
+
+Images are downscaled to 1600px before they land in the vault. This is not
+tidiness — the notes are committed to a public repository and git keeps every
+version forever, so a few megabytes per meal becomes unrecoverable the moment it
+is pushed.
 
 ## Why thoughts are split off
 

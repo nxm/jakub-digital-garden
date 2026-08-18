@@ -7,7 +7,7 @@ import { assertDate, assertTime, localTime, logDay } from "./day.js";
 import {
   appendEntry,
   appendThought,
-  findAttachment,
+  findRecentAttachment,
   readDayNote,
   recordTraining,
   saveMealPhoto,
@@ -76,13 +76,12 @@ function buildServer(): McpServer {
           .describe("Anything worth keeping — context, how it felt, doubts about the estimate."),
         contains_fish: z.boolean().default(false),
         photo: z
-          .string()
-          .optional()
+          .boolean()
+          .default(false)
           .describe(
-            "Filename of a photo the user attached, exactly as their client showed it — for " +
-              "example \"photo_2026-08-18_07-08-02.jpg\". Only works when the image was sent as a " +
-              "file/document; an image sent as a chat photo is never written to disk and has no " +
-              "filename to give. Omit it rather than inventing one.",
+            "Set when the user attached a photo of this meal to their message. The server finds " +
+              "the image itself and files it with the entry — do not pass a filename or a path, " +
+              "there is nothing for you to look up.",
           ),
         date: dateField,
         time: timeField,
@@ -109,11 +108,11 @@ function buildServer(): McpServer {
       let photoWarning: string | undefined;
 
       if (photo) {
-        const source = await findAttachment(photo);
+        const source = await findRecentAttachment();
         if (source) {
           embed = `![[${await saveMealPhoto(source, day, stamp)}]]`;
         } else {
-          photoWarning = ` Photo "${photo}" was not found — send it as a file, not a chat photo.`;
+          photoWarning = " No recent photo was found on the server, so the entry has none.";
         }
       }
 

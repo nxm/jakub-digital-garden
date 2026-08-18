@@ -62,20 +62,17 @@ for: `_garmin_synced`, `_garmin_final`.
 
 ## Photos
 
-`log_meal` takes a `photo` filename and copies the image into the vault, where
-the note embeds it. Two constraints shape this.
+`log_meal` takes `photo: true` when the user attached one, and the server finds
+the image itself — no filename, no path, nothing for the model to look up or
+mistype.
 
-The image must be sent as a **file**, not as a chat photo. Telegram photos are
-downloaded, optimised for the model and never written to disk, so there is
-nothing to copy and no filename to name it by. Files are saved to session media
-with a path the server can find.
-
-The filename has to come from the model, because moltis strips every argument
-whose name starts with `_` before forwarding a call to a remote MCP server —
-including `_session_key`. The server therefore cannot work out which session an
-attachment belongs to and searches all of them by name instead. That name is
-required to be a bare filename: it arrives from a language model, and a path
-separator in it would be a traversal into someone else's session media.
+It has to work that way. Moltis strips every argument whose name begins with `_`
+before forwarding a call to a remote MCP server, `_session_key` and
+`_document_files` among them, so nothing identifying the attachment survives the
+trip. What the server can see is the session media directory, so it takes the
+most recently saved file and ignores anything older than fifteen minutes —
+recent enough to survive a retry, tight enough that yesterday's lunch is never
+stapled to today's.
 
 Images are downscaled to 1600px before they land in the vault. This is not
 tidiness — the notes are committed to a public repository and git keeps every

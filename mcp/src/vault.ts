@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname, join, resolve } from "node:path";
@@ -237,28 +237,33 @@ export function appendThought(date: string, entry: string): Promise<string> {
 // here — a Telegram "photo" is optimised for the model and never written down.
 const mediaRoot = process.env["MOLTIS_MEDIA_ROOT"] ?? "/var/lib/moltis/sessions/media/v1";
 
-/** Locates an attachment by the filename the user's client showed.
+// How far back an attachment still counts as "the one just sent". Long enough
+// to survive a slow model or a retry, short enough that yesterday's lunch never
+// gets stapled to today's.
+const RECENT_ATTACHMENT_MS = 15 * 60 * 1000;
+
+/** The most recently saved attachment, if one arrived just now.
  *
- * The stored name carries a channel-side prefix, so the match is on the tail.
- * The needle is a bare filename by contract — it arrives from a language model,
- * and a path separator in it would be a directory traversal into someone's
- * session media.
+ * Matching by filename would be more precise but cannot be relied on: moltis
+ * strips every argument starting with `_` before forwarding to a remote MCP
+ * server, so neither the session key nor the saved filename reaches this
+ * process. The model would have to read the name off the screen and retype it,
+ * which it does badly. Recency needs nothing from anyone.
  */
-export async function findAttachment(filename: string): Promise<string | undefined> {
-  if (!filename || /[\\/]/.test(filename) || filename.includes("..")) {
-    throw new Error(`Refusing a photo name that is not a bare filename: "${filename}"`);
-  }
+export async function findRecentAttachment(): Promise<string | undefined> {
+  let newest: { path: string; mtime: number } | undefined;
 
   for (const session of await readdir(mediaRoot).catch(() => [])) {
     const files = join(mediaRoot, session, "files");
     for (const candidate of await readdir(files).catch(() => [])) {
-      if (candidate === filename || candidate.endsWith(`_${filename}`)) {
-        return join(files, candidate);
-      }
+      const path = join(files, candidate);
+      const { mtimeMs } = await stat(path).catch(() => ({ mtimeMs: 0 }));
+      if (!newest || mtimeMs > newest.mtime) newest = { path, mtime: mtimeMs };
     }
   }
 
-  return undefined;
+  if (!newest || Date.now() - newest.mtime > RECENT_ATTACHMENT_MS) return undefined;
+  return newest.path;
 }
 
 /** Copies an attachment into the vault, downscaled, and returns its basename.

@@ -32,7 +32,7 @@ An open, measurable affiliate layer for attention.
 
 ## Who it's for
 
-Creators sitting on knowledge – people [[learning-in-public]] with a [[second-brain]] worth sharing – who want to monetize without stitching together five separate tools. Same spirit as the [[digital-garden]]: own your work, publish it, let it compound.
+Creators sitting on knowledge – people [[agent-orchestration]] with a [[second-brain]] worth sharing – who want to monetize without stitching together five separate tools. Same spirit as the [[digital-garden]]: own your work, publish it, let it compound.
 
 ## Why
 

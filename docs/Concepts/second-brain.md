@@ -17,4 +17,4 @@ A **second brain** is an external, trusted system for the things your biological
 
 ## How I run mine
 
-I keep everything as plain-text Markdown in [[obsidian]], then publish the parts worth sharing here. Writing in the open – [[learning-in-public]] – keeps me honest about what I actually understand.
+I keep everything as plain-text Markdown in [[obsidian]], then publish the parts worth sharing here. Writing in the open – [[agent-orchestration]] – keeps me honest about what I actually understand.

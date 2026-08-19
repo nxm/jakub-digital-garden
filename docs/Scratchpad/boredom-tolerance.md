@@ -6,4 +6,6 @@ tags:
   - knowledge
 ---
 
-TODO
+How can I reduce social media / doom-scrolling
+- block instagram, x.com, tiktok on my router via adguard
+- replace social media with good sources like blogs, rss feeds, x.com summarizer
